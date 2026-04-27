@@ -1,0 +1,22 @@
+# Compiled artefacts
+build/
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Cursor / agent metadata
+.cursor/
+.specstory/

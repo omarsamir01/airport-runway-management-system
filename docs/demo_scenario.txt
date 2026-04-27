@@ -1,0 +1,13 @@
+addrunway RW-EXTRA 2
+add MS999 Egyptair B777 ARR 80 emergency
+add AF120 AirFrance A320 ARR 5
+add BA456 BritAir B737 DEP 90
+add LH100 Lufthansa A350 ARR 75
+pending
+tick 5
+status
+log
+emergency BA456
+run
+log
+quit

@@ -1,0 +1,23 @@
+Initial commit: Airport Runway Management System
+
+CSE123 Spring 2026 project. A real-time airport simulation built around
+two from-scratch data structures: a binary max-heap for priority dispatch
+of pending flights, and a singly-linked-list FIFO queue for per-runway
+service lines and the global flight log.
+
+Layered architecture:
+  - src/ds/     : MaxHeap<T>, Queue<T>           (data structures)
+  - src/model/  : Flight, Runway                 (application model)
+  - src/        : Scheduler, main (CLI), bench   (composition + UI)
+  - tests/      : 63-case hand-written test suite (no exceptions)
+
+Three binaries produced by build.bat:
+  - run_tests.exe     full test suite (63/63 passing)
+  - runway_sim.exe    interactive CLI simulator
+  - runway_bench.exe  perf benchmarks at n = 10^2 .. 10^6
+
+Documentation in docs/:
+  - final_report.md       full project write-up
+  - study_guide.md        viva preparation, all things-to-do with answers
+  - benchmark_results.txt empirical perf numbers
+  - demo_scenario.txt     canned 13-line CLI script for the demo
