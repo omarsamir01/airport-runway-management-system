@@ -28,6 +28,15 @@ and the CLI's view helpers (pending list, log list).
 * `final_report.md`         — the comprehensive project write-up.
 * `demo_scenario.txt`       — canned 13-line script for the demo video.
 
+**Web visualizer** lives in `web/`:
+
+* `index.html`              — single-file, no-build UI that mirrors the C++ algorithm
+                              in JavaScript and renders the priority heap as a live
+                              binary tree, the per-runway queues as horizontal cells,
+                              the runways as airplane cards with progress bars, and
+                              the global flight log as a scrolling feed.
+                              Open it by double-clicking the file.
+
 ## Data Structures (implemented from scratch)
 
 | Structure       | Header                  | Backing storage           | Purpose in the system                        |
@@ -76,6 +85,8 @@ Runway_System/
 ├── docs/
 │   ├── final_report.md         <- full project write-up (the deliverable)
 │   └── demo_scenario.txt       <- canned demo input piped into the simulator
+├── web/
+│   └── index.html              <- visualizer (open in any browser, no build)
 ├── build/                      <- compiled artefacts (gitignored)
 ├── build.bat                   <- one-command build & test on Windows
 └── README.md
@@ -137,6 +148,45 @@ Get-Content docs\demo_scenario.txt | .\build\runway_sim.exe
 The simulator starts pre-loaded with two runways (`RW-09L` and `RW-27R`,
 service time 3 minutes each) so you can `add` flights and `tick`
 immediately without any setup.
+
+## Web visualizer
+
+`web/index.html` is a single-file, dependency-free web UI that visualizes
+the same algorithm in real time. Open it in any browser (just
+double-click) and you get two tabs:
+
+**Live Simulation tab**
+* the runways shown as top-down asphalt strips with sliding airplane
+  icons and live service progress bars,
+* the priority heap rendered as a binary tree that re-balances on
+  every operation, with rich hover tooltips on each node,
+* the per-runway FIFO queues shown as horizontal boarding-pass cells
+  with a pulsing "now serving" cell at the head,
+* throughput sparklines for pending / active / completed,
+* the global flight log scrolling in the corner,
+* a live tick clock and a Dispatch Mode toggle:
+  - `Drain` (default) – every tick dispatches *all* pending flights to
+    the least-loaded runway, so queues actually fill and both runways
+    run in parallel from tick 1.
+  - `Single` – one dispatch per tick, matching the C++ CLI exactly.
+
+**Complexity & Performance tab**
+* live operation counters for `MaxHeap.push/pop/compare/rebuild` and
+  `Queue.enqueue/dequeue` that flash on every change during the
+  simulation,
+* a theoretical Big-O comparison chart (`O(1)`, `O(log n)`, `O(n)`,
+  `O(n log n)`, `O(n²)`) drawn from `n = 1..100`,
+* a complete operation reference table mapping every method in the
+  project to its average and worst-case complexity,
+* a live in-browser benchmark that times the actual `MaxHeap` and
+  `Queue` classes at sizes from 100 up to 100 000 and plots the
+  results on a log–log chart.
+
+The JavaScript inside mirrors the C++ scheduler exactly (same heap
+math, same priority formula, same load-balancing rule, same per-tick
+steps), so behaviour in the browser matches `runway_sim.exe`. The C++
+implementation in `src/` is the actual project deliverable; the
+visualizer is a presentation layer.
 
 ## Roadmap
 

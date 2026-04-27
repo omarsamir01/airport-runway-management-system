@@ -1,0 +1,2909 @@
+<!--
+    Airport Runway Management System - Visualizer
+    -------------------------------------------------
+    A self-contained, dependency-free web UI that mirrors the C++ backend
+    exactly (same MaxHeap, same Queue, same Flight priority formula, same
+    Scheduler tick steps, same load-balancing rule). The C++ source in
+    src/ is the real project; this file is a side-by-side visualization
+    tool you can open by double-clicking it - no build step, no server.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Airport Runway Management System &mdash; Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  /* ----------------------------------------------------------------
+     Palette & globals
+     ---------------------------------------------------------------- */
+  :root {
+    --panel:        #ffffff;
+    --panel-2:      #f8fafc;
+    --panel-3:      #f1f5f9;
+    --border:       #e6ecf5;
+    --border-2:     #d8e0ee;
+    --text:         #0b1220;
+    --text-soft:    #475569;
+    --text-muted:   #94a3b8;
+
+    --primary:      #4f46e5;
+    --primary-2:    #7c8aff;
+    --primary-soft: #eef0ff;
+    --primary-deep: #3730a3;
+
+    --cyan:         #06b6d4;
+    --cyan-soft:    #ecfeff;
+
+    --emerald:      #10b981;
+    --emerald-soft: #d1fae5;
+    --amber:        #f59e0b;
+    --amber-soft:   #fef3c7;
+    --rose:         #ef4444;
+    --rose-soft:    #fee2e2;
+    --sky:          #0ea5e9;
+
+    --asphalt-1:    #1f2937;
+    --asphalt-2:    #0b1220;
+
+    --shadow-sm:  0 1px 2px rgba(15, 23, 42, 0.04),
+                  0 1px 3px rgba(15, 23, 42, 0.05);
+    --shadow:     0 4px 12px -2px rgba(15, 23, 42, 0.08),
+                  0 2px 4px rgba(15, 23, 42, 0.04);
+    --shadow-md:  0 12px 28px -8px rgba(15, 23, 42, 0.18),
+                  0 4px 10px rgba(15, 23, 42, 0.06);
+    --shadow-lg:  0 24px 48px -12px rgba(15, 23, 42, 0.25);
+
+    --radius:    16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: 'cv11', 'ss01', 'salt';
+    -webkit-font-smoothing: antialiased;
+
+    /* Layered, more saturated "sky" background with three soft blobs */
+    background:
+      radial-gradient(ellipse 60% 50% at 8% 0%,    rgba(99, 102, 241, 0.30)  0, transparent 60%),
+      radial-gradient(ellipse 55% 45% at 95% 5%,   rgba(6, 182, 212, 0.28)   0, transparent 60%),
+      radial-gradient(ellipse 60% 60% at 50% 110%, rgba(244, 114, 182, 0.18) 0, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 80% 70%,  rgba(139, 92, 246, 0.18)  0, transparent 60%),
+      linear-gradient(180deg, #f3f7ff 0%, #ebf0fa 100%);
+    background-attachment: fixed;
+  }
+
+  .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; }
+
+  h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.015em; }
+  h2 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  h2::before {
+    content: '';
+    width: 4px; height: 14px;
+    background: linear-gradient(180deg, var(--primary), var(--primary-2));
+    border-radius: 2px;
+  }
+
+  /* ----------------------------------------------------------------
+     Top-level grid
+     ---------------------------------------------------------------- */
+  .app {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 22px;
+    min-height: 100vh;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ----------------------------------------------------------------
+     Tab navigation + tab content
+     ---------------------------------------------------------------- */
+  .tabs {
+    display: flex; gap: 6px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px;
+    box-shadow: var(--shadow-sm);
+  }
+  .tab-btn {
+    flex: 1;
+    background: transparent;
+    color: var(--text-soft);
+    border: 1px solid transparent;
+    padding: 11px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    border-radius: 11px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+    box-shadow: none;
+  }
+  .tab-btn:hover {
+    background: var(--panel-2); color: var(--text);
+    box-shadow: none;
+  }
+  .tab-btn.active {
+    background: linear-gradient(180deg, var(--primary) 0%, #4338ca 100%);
+    color: white;
+    box-shadow: 0 5px 14px -4px rgba(79, 70, 229, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+  .tab-btn .tab-icon { width: 16px; height: 16px; }
+
+  .tab-content {
+    display: grid;
+    gap: 18px;
+    min-height: 0;
+    animation: tab-fade-in 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .tab-content[hidden] { display: none; }
+  @keyframes tab-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .live-tab {
+    grid-template-rows: auto 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+  .live-tab > .controls     { grid-column: 1 / -1; }
+  .live-tab > .runways-panel{ grid-column: 1; grid-row: 2; }
+  .live-tab > .heap-panel   { grid-column: 2; grid-row: 2; }
+  .live-tab > .queues-panel { grid-column: 1; grid-row: 3; }
+  .live-tab > .log-panel    { grid-column: 2; grid-row: 3; }
+
+  .complexity-tab {
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: auto;
+  }
+  .complexity-tab > .op-strip               { grid-column: 1 / -1; }
+  .complexity-tab > .complexity-bigo-panel  { grid-column: 1; }
+  .complexity-tab > .complexity-table-panel { grid-column: 2; }
+  .complexity-tab > .complexity-bench-panel { grid-column: 1 / -1; }
+
+  /* ----------------------------------------------------------------
+     Header
+     ---------------------------------------------------------------- */
+  header {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 24px;
+    background:
+      radial-gradient(circle at 100% 0%,  rgba(255,255,255,0.20) 0, transparent 50%),
+      radial-gradient(circle at 0%   100%, rgba(255,255,255,0.10) 0, transparent 45%),
+      linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #8b5cf6 100%);
+    color: white;
+    padding: 22px 28px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  header::after {
+    /* Subtle dot grain so the gradient feels less flat */
+    content: '';
+    position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1.5px);
+    background-size: 14px 14px;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+  }
+
+  .title-block {
+    display: flex; align-items: center; gap: 16px;
+    z-index: 1;
+  }
+  .title-block .tower {
+    width: 52px; height: 52px;
+    display: grid; place-items: center;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.32);
+    border-radius: 14px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    flex-shrink: 0;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+  }
+  .title-block .tower svg { width: 30px; height: 30px; color: white; }
+  .title-block h1 {
+    font-size: 22px; font-weight: 800; letter-spacing: -0.025em;
+    line-height: 1.15;
+  }
+  .title-block .sub {
+    font-size: 13px; opacity: 0.85; margin-top: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.28);
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .badge .pulse {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1;    transform: scale(1); }
+    50%      { opacity: 0.5;  transform: scale(0.8); }
+  }
+
+  .head-stats {
+    display: flex; gap: 10px;
+    z-index: 1;
+  }
+  .head-stat {
+    background: rgba(255,255,255,0.13);
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex; flex-direction: column;
+    min-width: 78px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  .head-stat .lbl {
+    font-size: 9.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; opacity: 0.78;
+    font-weight: 700;
+  }
+  .head-stat .v {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 22px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+  }
+  .head-stat.clock {
+    background: rgba(255,255,255,0.22);
+    border-color: rgba(255,255,255,0.35);
+  }
+  .head-stat.clock .v { font-size: 26px; }
+
+  /* ----------------------------------------------------------------
+     Controls bar
+     ---------------------------------------------------------------- */
+  .controls {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 14px 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 22px;
+    align-items: flex-end;
+  }
+  .group {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    padding-right: 22px;
+  }
+  .group:last-child { border-right: none; padding-right: 0; }
+  .group .label {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-soft); margin-bottom: 8px; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .group .label::before {
+    content: ''; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--primary);
+  }
+  .group .row { display: flex; gap: 6px; align-items: center; }
+
+  input, select, button { font: inherit; color: inherit; }
+  input[type=text], input[type=number], select {
+    border: 1px solid var(--border-2);
+    background: white;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    outline: none;
+    font-size: 13px;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  }
+  input[type=text]::placeholder, input[type=number]::placeholder { color: var(--text-muted); }
+  input[type=text]:hover, input[type=number]:hover, select:hover {
+    background: #fcfdff;
+  }
+  input[type=text]:focus, input[type=number]:focus, select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+  input.short { width: 80px; }
+  input.tiny  { width: 56px; }
+  input.med   { width: 110px; }
+
+  label.check {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700;
+    user-select: none; padding: 6px 10px;
+    border-radius: var(--radius-xs);
+    background: var(--rose-soft); color: #b91c1c;
+    border: 1px solid #fecaca;
+    letter-spacing: 0.06em;
+  }
+  label.check input { accent-color: var(--rose); margin: 0; }
+
+  button {
+    border: 1px solid transparent;
+    background: linear-gradient(180deg, var(--primary) 0%, #4338ca 100%);
+    color: white;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600; font-size: 13px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    transition: transform 0.08s, box-shadow 0.18s, filter 0.15s;
+  }
+  button:hover  { filter: brightness(1.07); box-shadow: 0 5px 14px -3px rgba(79, 70, 229, 0.45); }
+  button:active { transform: translateY(1px); filter: brightness(0.95); }
+
+  button.ghost {
+    background: white; color: var(--text);
+    border-color: var(--border-2);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+  button.ghost:hover { background: var(--panel-2); border-color: var(--primary); color: var(--primary); }
+
+  button.warn { background: linear-gradient(180deg, var(--rose) 0%, #b91c1c 100%); }
+  button.warn:hover { box-shadow: 0 5px 14px -3px rgba(239, 68, 68, 0.5); }
+  button.ok   { background: linear-gradient(180deg, var(--emerald) 0%, #047857 100%); }
+  button.ok:hover { box-shadow: 0 5px 14px -3px rgba(16, 185, 129, 0.5); }
+
+  /* ----------------------------------------------------------------
+     Panels
+     ---------------------------------------------------------------- */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 18px 18px 16px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .panel-header .count {
+    font-size: 11px; font-weight: 700;
+    color: var(--primary-deep);
+    background: var(--primary-soft);
+    padding: 4px 10px; border-radius: 999px;
+    letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+    border: 1px solid #dde0ff;
+  }
+  .panel-body {
+    overflow: auto; flex: 1; min-height: 0;
+    padding-right: 4px;
+  }
+
+  /* Pretty scrollbars */
+  .panel-body::-webkit-scrollbar { width: 8px; height: 8px; }
+  .panel-body::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb { background: #d8dde8; border-radius: 4px; }
+  .panel-body::-webkit-scrollbar-thumb:hover { background: #b9c0d1; }
+
+  /* ----------------------------------------------------------------
+     Runway cards - top-down asphalt visualization
+     ---------------------------------------------------------------- */
+  .runway {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, var(--panel-2) 100%);
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.3s, transform 0.18s, box-shadow 0.3s, background 0.3s;
+  }
+  .runway:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+  .runway.busy {
+    border-color: #a7f3d0;
+    background: linear-gradient(180deg, #ffffff 0%, var(--emerald-soft) 100%);
+    box-shadow: 0 4px 16px -6px rgba(16, 185, 129, 0.32);
+  }
+
+  .runway-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .runway-name {
+    font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .runway-name .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--text-muted);
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.2);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .runway.busy .runway-name .dot {
+    background: var(--emerald);
+    animation: live-dot 1.6s ease-in-out infinite;
+  }
+  @keyframes live-dot {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.25); }
+    50%      { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.0); }
+  }
+
+  .runway-status {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 999px;
+    background: white; color: var(--text-muted);
+    border: 1px solid var(--border-2);
+  }
+  .runway.busy .runway-status {
+    background: var(--emerald);
+    color: white;
+    border-color: var(--emerald);
+  }
+
+  /* The asphalt strip */
+  .runway-strip {
+    position: relative;
+    height: 64px;
+    border-radius: 10px;
+    background:
+      linear-gradient(90deg, rgba(0,0,0,0.25) 0%, transparent 6%, transparent 94%, rgba(0,0,0,0.25) 100%),
+      linear-gradient(180deg, var(--asphalt-1) 0%, var(--asphalt-2) 100%);
+    border: 1px solid #050913;
+    box-shadow:
+      inset 0 2px 4px rgba(0,0,0,0.45),
+      inset 0 -1px 0 rgba(255,255,255,0.04);
+    overflow: hidden;
+  }
+  .runway-strip::before {
+    /* Centerline dashes (yellow) */
+    content: '';
+    position: absolute; left: 9%; right: 9%;
+    top: 50%; height: 4px; transform: translateY(-50%);
+    background: repeating-linear-gradient(90deg,
+      rgba(255, 220, 100, 0.92) 0 22px,
+      transparent 22px 38px);
+    border-radius: 2px;
+    opacity: 0.85;
+  }
+  /* Busy runway: subtle blue light sweep across the asphalt */
+  .runway.busy .runway-strip::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(99, 102, 241, 0.0) 30%,
+      rgba(99, 102, 241, 0.18) 50%,
+      rgba(99, 102, 241, 0.0) 70%,
+      transparent 100%);
+    background-size: 200% 100%;
+    animation: rwy-sweep 3.5s linear infinite;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+  @keyframes rwy-sweep {
+    0%   { background-position: -100% 0; }
+    100% { background-position:  100% 0; }
+  }
+  .runway-strip .threshold {
+    position: absolute; top: 8px; bottom: 8px; width: 6px;
+    background: repeating-linear-gradient(180deg,
+      rgba(255,255,255,0.85) 0 6px,
+      transparent 6px 11px);
+    border-radius: 1px;
+  }
+  .runway-strip .threshold.l { left: 4px; }
+  .runway-strip .threshold.r { right: 4px; }
+
+  .runway-strip .rwy-num {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-size: 13px;
+    color: rgba(255, 255, 255, 0.78);
+    letter-spacing: 0.1em;
+    pointer-events: none;
+  }
+  .runway-strip .rwy-num.l { left: 16px; }
+  .runway-strip .rwy-num.r { right: 16px; }
+
+  .runway-strip .plane {
+    position: absolute; top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 30px;
+    line-height: 1;
+    color: white;
+    filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
+    transition: left 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2;
+    pointer-events: none;
+  }
+  .runway-strip .plane.emergency { color: #fecaca; filter: drop-shadow(0 0 6px rgba(248, 113, 113, 0.7)); }
+  .runway-strip .plane.low-fuel  { color: #fde68a; filter: drop-shadow(0 0 6px rgba(252, 211, 77, 0.6)); }
+
+  .runway-strip .empty-text {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    color: rgba(255,255,255,0.55);
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  /* Flight info row beneath the runway strip */
+  .runway-info {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px; align-items: center;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .runway-info.empty {
+    color: var(--text-muted); font-style: italic;
+    text-align: center; display: block;
+    background: transparent;
+    border-style: dashed;
+  }
+  .runway-info .id {
+    font-weight: 700; font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+  }
+  .runway-info .meta {
+    display: flex; gap: 6px; align-items: center;
+    font-size: 12px; color: var(--text-soft);
+    flex-wrap: wrap;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 6px;
+    background: var(--panel-2); color: var(--text-soft);
+    font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.04em;
+    border: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+  .chip.dir       { background: var(--primary-soft); color: var(--primary-deep); border-color: #dde0ff; }
+  .chip.emergency { background: var(--rose-soft);    color: #991b1b;             border-color: #fecaca; }
+  .chip.low-fuel  { background: var(--amber-soft);   color: #92400e;             border-color: #fde68a; }
+  .chip.fuel      { background: white;               color: var(--text-soft);    border-color: var(--border-2); }
+
+  .runway-info .priority {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: var(--primary-deep);
+    background: var(--primary-soft);
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px;
+    border: 1px solid #dde0ff;
+    white-space: nowrap;
+  }
+
+  .progress {
+    margin-top: 10px;
+    height: 8px;
+    background: rgba(15, 23, 42, 0.08);
+    border-radius: 999px; overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .progress > .bar {
+    height: 100%;
+    background: linear-gradient(90deg,
+      var(--emerald) 0%, #34d399 50%, #6ee7b7 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+    transition: width 0.6s ease;
+    border-radius: 999px;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  .progress-line {
+    display: flex; justify-content: space-between;
+    font-size: 10.5px; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 5px; letter-spacing: 0.04em;
+  }
+
+  /* ----------------------------------------------------------------
+     Heap visualisation (SVG-positioned circles + connecting lines)
+     ---------------------------------------------------------------- */
+  .heap-svg {
+    width: 100%; height: 100%; min-height: 280px;
+    display: block;
+  }
+  .heap-edge {
+    stroke: rgba(99, 102, 241, 0.22);
+    stroke-width: 2;
+    stroke-linecap: round;
+    transition: x1 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                y1 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                x2 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                y2 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .heap-node {
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity   0.32s ease;
+  }
+  .heap-node circle {
+    fill: url(#grad-normal);
+    stroke: white;
+    stroke-width: 3;
+    filter: drop-shadow(0 3px 6px rgba(79, 70, 229, 0.45));
+    transition: filter 0.3s;
+  }
+  .heap-node.low-fuel circle {
+    fill: url(#grad-fuel);
+    filter: drop-shadow(0 3px 6px rgba(245, 158, 11, 0.5));
+  }
+  .heap-node.emergency circle {
+    fill: url(#grad-emerg);
+    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.65));
+    animation: emergency-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes emergency-pulse {
+    0%, 100% { stroke: white;   stroke-width: 3; }
+    50%      { stroke: #fecaca; stroke-width: 5; }
+  }
+  .heap-node text {
+    fill: white;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    text-anchor: middle;
+    pointer-events: none;
+    paint-order: stroke fill;
+  }
+  .heap-node text.priority { opacity: 0.85; font-weight: 600; }
+  .heap-empty {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; color: var(--text-muted);
+    font-size: 13px; gap: 8px;
+  }
+  .heap-empty .icon {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: var(--primary-soft);
+    color: var(--primary);
+    display: grid; place-items: center;
+    font-size: 26px;
+    border: 1px dashed #c7d2fe;
+  }
+
+  /* ----------------------------------------------------------------
+     Per-runway queues - boarding-pass styled cells
+     ---------------------------------------------------------------- */
+  .queue-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .queue-row .qname {
+    flex: 0 0 96px;
+    font-weight: 700; font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .queue-row .qname::before {
+    content: ''; width: 4px; height: 18px; border-radius: 2px;
+    background: linear-gradient(180deg, var(--primary), var(--primary-2));
+  }
+  .queue-cells {
+    display: flex; align-items: center; gap: 6px;
+    min-height: 38px;
+  }
+  .queue-cell {
+    position: relative;
+    background: white;
+    border: 1px solid var(--border-2);
+    border-left: 3px solid var(--primary);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: var(--radius-xs);
+    font-size: 12px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    animation: slide-in 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .queue-cell:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px -2px rgba(15, 23, 42, 0.15);
+  }
+  .queue-cell.emergency {
+    border-left-color: var(--rose);
+    background: var(--rose-soft);
+    color: #991b1b;
+  }
+  .queue-cell.low-fuel {
+    border-left-color: var(--amber);
+    background: var(--amber-soft);
+    color: #78350f;
+  }
+  .queue-cell.serving {
+    background: linear-gradient(90deg, var(--emerald-soft), white);
+    border-left-color: var(--emerald);
+    color: #047857;
+    padding-right: 24px;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.18),
+                0 1px 3px rgba(15, 23, 42, 0.08);
+  }
+  .queue-cell.serving::after {
+    content: '';
+    position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.28);
+    animation: live-dot 1.5s ease-in-out infinite;
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .queue-arrow {
+    color: #cbd5e1; font-size: 14px; font-weight: 700;
+  }
+  .queue-empty {
+    color: var(--text-muted); font-style: italic; font-size: 12px;
+    padding: 8px 14px;
+    background: var(--panel-2);
+    border-radius: var(--radius-xs);
+    border: 1px dashed var(--border-2);
+  }
+  .queue-front-label {
+    font-size: 9.5px; color: var(--text-muted);
+    letter-spacing: 0.12em; text-transform: uppercase;
+    margin-right: 4px; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+
+  /* ----------------------------------------------------------------
+     Log
+     ---------------------------------------------------------------- */
+  .log-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column-reverse;
+    gap: 7px;
+  }
+  .log-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px; align-items: center;
+    padding: 10px 12px;
+    background: white;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--emerald);
+    border-radius: var(--radius-xs);
+    box-shadow: var(--shadow-sm);
+    animation: slide-in 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .log-item:hover { transform: translateX(2px); box-shadow: var(--shadow); }
+  .log-item.emergency {
+    border-left-color: var(--rose);
+    background: linear-gradient(90deg, var(--rose-soft) 0%, white 30%);
+  }
+  .log-item.low-fuel {
+    border-left-color: var(--amber);
+    background: linear-gradient(90deg, var(--amber-soft) 0%, white 30%);
+  }
+  .log-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700; font-size: 11px;
+    color: var(--text-soft);
+    background: var(--panel-2);
+    padding: 4px 9px; border-radius: 6px;
+    border: 1px solid var(--border);
+    letter-spacing: 0.02em;
+  }
+  .log-item.emergency .log-time { color: #991b1b; background: white; border-color: #fecaca; }
+  .log-item.low-fuel  .log-time { color: #78350f; background: white; border-color: #fde68a; }
+
+  .log-flight { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+  .log-meta   { color: var(--text-muted); font-size: 12px; }
+  .log-tag {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px;
+    margin-left: 6px;
+    border: 1px solid currentColor;
+    opacity: 0.85;
+  }
+
+  .log-empty {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--text-muted);
+    text-align: center; padding: 30px 0;
+    gap: 8px;
+  }
+  .log-empty .icon {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--panel-2);
+    display: grid; place-items: center;
+    font-size: 22px;
+    border: 1px dashed var(--border-2);
+  }
+
+  /* ----------------------------------------------------------------
+     Toast
+     ---------------------------------------------------------------- */
+  #toast-container {
+    position: fixed; top: 22px; right: 22px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 1000; pointer-events: none;
+  }
+  .toast {
+    background: white;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--primary);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    padding: 11px 16px 11px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    animation: slide-in 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
+    min-width: 220px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .toast.warn { border-left-color: var(--rose); }
+  .toast.ok   { border-left-color: var(--emerald); }
+  .toast .ttl {
+    font-weight: 700;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 13px;
+    background: var(--primary-soft); color: var(--primary);
+    flex-shrink: 0;
+  }
+  .toast.ok   .ttl { background: var(--emerald-soft); color: #047857; }
+  .toast.warn .ttl { background: var(--rose-soft);    color: #b91c1c; }
+
+  /* ----------------------------------------------------------------
+     Segmented control (Dispatch Mode)
+     ---------------------------------------------------------------- */
+  .row.segmented,
+  .segmented {
+    display: inline-flex;
+    background: var(--panel-2);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    gap: 0;
+  }
+  .segmented .seg {
+    background: transparent;
+    color: var(--text-soft);
+    border: 1px solid transparent;
+    padding: 6px 12px;
+    border-radius: 7px;
+    font-weight: 600; font-size: 12px;
+    box-shadow: none;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  .segmented .seg:hover { color: var(--text); background: rgba(255, 255, 255, 0.6); box-shadow: none; }
+  .segmented .seg.active {
+    background: white;
+    color: var(--primary-deep);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08),
+                0 1px 0 rgba(15, 23, 42, 0.04);
+  }
+
+  /* ----------------------------------------------------------------
+     Dark "stage" buttons inside header (theme switch)
+     ---------------------------------------------------------------- */
+  .header-actions {
+    display: flex; gap: 8px; align-items: center;
+    z-index: 1;
+  }
+
+  /* ----------------------------------------------------------------
+     Operation counter cards (Complexity tab top strip)
+     ---------------------------------------------------------------- */
+  .op-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 1280px) {
+    .op-strip { grid-template-columns: repeat(3, 1fr); }
+  }
+  .op-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+  .op-card::before {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary), var(--primary-2));
+    opacity: 0.85;
+  }
+  .op-card-head {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .op-icon {
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    display: grid; place-items: center;
+    color: white;
+    font-weight: 700;
+    font-size: 16px;
+    box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.18);
+  }
+  .op-name { font-size: 13px; font-weight: 700; color: var(--text); }
+  .op-sub  { font-size: 11px; color: var(--text-muted); }
+  .op-value {
+    font-size: 28px; font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    transition: color 0.3s;
+  }
+  .op-bigO {
+    align-self: flex-start;
+    background: var(--primary-soft);
+    color: var(--primary-deep);
+    border: 1px solid #dde0ff;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.04em;
+  }
+
+  /* Pulse the value when it changes */
+  .op-value.flash {
+    animation: op-flash 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  @keyframes op-flash {
+    0%   { color: var(--primary); transform: scale(1.1); }
+    100% { color: var(--text);    transform: scale(1); }
+  }
+
+  /* ----------------------------------------------------------------
+     Charts
+     ---------------------------------------------------------------- */
+  .chart-svg {
+    width: 100%; height: auto;
+    display: block;
+    background:
+      linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+  }
+  .chart-axis  { stroke: var(--border-2); stroke-width: 1; }
+  .chart-grid  { stroke: var(--border);   stroke-width: 1; stroke-dasharray: 3 4; }
+  .chart-label { fill: var(--text-muted); font-size: 11px;
+                 font-family: 'JetBrains Mono', monospace; }
+  .chart-title { fill: var(--text-soft); font-weight: 700; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .chart-line  { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round;
+                 transition: stroke-width 0.15s; }
+  .chart-line:hover { stroke-width: 4; }
+  .chart-dot   { stroke: white; stroke-width: 1.5; }
+
+  .chart-legend {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    padding: 10px 4px 0;
+    font-size: 12px; color: var(--text-soft);
+  }
+  .chart-legend .l-item {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-weight: 600;
+  }
+  .chart-legend .l-swatch {
+    width: 14px; height: 4px; border-radius: 2px; display: inline-block;
+  }
+
+  /* ----------------------------------------------------------------
+     Operation table
+     ---------------------------------------------------------------- */
+  .op-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  .op-table th, .op-table td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .op-table th {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--panel-2);
+    position: sticky; top: 0;
+  }
+  .op-table th.r, .op-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .op-table tbody tr:hover { background: var(--primary-soft); }
+  .op-table tbody tr:hover td { color: var(--text); }
+  .c-best { color: #047857; font-weight: 700; }
+  .c-good { color: var(--primary-deep); font-weight: 700; }
+  .c-warn { color: #b45309; font-weight: 700; }
+  .table-footnote {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border-left: 3px solid var(--primary-2);
+    border-radius: var(--radius-xs);
+  }
+  .table-footnote em {
+    color: var(--primary-deep);
+    font-style: normal;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+  }
+
+  /* ----------------------------------------------------------------
+     Benchmark controls
+     ---------------------------------------------------------------- */
+  .bench-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+  }
+  .bench-label {
+    font-size: 11px; font-weight: 700; color: var(--text-soft);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .check-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-2);
+    font-size: 12px; font-weight: 600;
+    color: var(--text-soft);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s;
+  }
+  .check-pill:has(input:checked) {
+    background: var(--primary-soft);
+    border-color: #c7d2fe;
+    color: var(--primary-deep);
+  }
+  .check-pill input { accent-color: var(--primary); margin: 0; width: 13px; height: 13px; }
+  .bench-note {
+    margin-top: 10px;
+    font-size: 12px; color: var(--text-muted);
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border-radius: var(--radius-xs);
+    border: 1px dashed var(--border-2);
+  }
+  .bench-note code {
+    background: white; padding: 1px 6px; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    border: 1px solid var(--border);
+    color: var(--primary-deep);
+  }
+
+  /* ----------------------------------------------------------------
+     Heap-node hover card (rich tooltip)
+     ---------------------------------------------------------------- */
+  .hover-card {
+    position: fixed;
+    z-index: 1500;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    padding: 12px 14px;
+    min-width: 200px;
+    pointer-events: none;
+    font-size: 12.5px;
+    transform: translate(12px, 12px);
+    animation: hover-in 0.15s ease;
+  }
+  @keyframes hover-in {
+    from { opacity: 0; transform: translate(12px, 6px); }
+    to   { opacity: 1; transform: translate(12px, 12px); }
+  }
+  .hover-card .hc-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px; font-weight: 800;
+    color: var(--text);
+  }
+  .hover-card .hc-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 14px; margin-top: 5px;
+    color: var(--text-soft);
+  }
+  .hover-card .hc-row .k { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+  .hover-card .hc-row .v { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--text); }
+  .hover-card .hc-priority {
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed var(--border);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .hover-card .hc-priority .v {
+    font-size: 18px; font-weight: 800;
+    color: var(--primary-deep);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ----------------------------------------------------------------
+     Throughput sparkline (bottom of heap panel)
+     ---------------------------------------------------------------- */
+  .spark-row {
+    display: flex; gap: 12px; align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+  .spark-block {
+    flex: 1;
+    display: flex; flex-direction: column; gap: 3px;
+    min-width: 0;
+  }
+  .spark-block .lbl {
+    font-size: 10px; color: var(--text-muted);
+    font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .spark-block .lbl .v {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; color: var(--text); font-weight: 700;
+    letter-spacing: 0;
+  }
+  .spark-svg { width: 100%; height: 28px; display: block; }
+
+  /* ----------------------------------------------------------------
+     Legend
+     ---------------------------------------------------------------- */
+  .legend {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    font-size: 11px; color: var(--text-muted);
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .legend .swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.9), 0 1px 2px rgba(15,23,42,0.15);
+  }
+
+  @media (max-width: 1100px) {
+    .live-tab,
+    .complexity-tab { grid-template-columns: 1fr; }
+    .live-tab > .runways-panel,
+    .live-tab > .heap-panel,
+    .live-tab > .queues-panel,
+    .live-tab > .log-panel { grid-column: 1; grid-row: auto; }
+    .complexity-tab > .complexity-bigo-panel,
+    .complexity-tab > .complexity-table-panel,
+    .complexity-tab > .complexity-bench-panel { grid-column: 1; }
+    .head-stats { display: none; }
+    .op-strip { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============================================================
+        HEADER
+       ============================================================ -->
+  <header>
+    <div class="title-block">
+      <div class="tower" aria-hidden="true">
+        <!-- Stylized control tower -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 21h14"/>
+          <path d="M8 21V13l4-2 4 2v8"/>
+          <rect x="9" y="6" width="6" height="5" rx="1"/>
+          <path d="M12 6V3"/>
+          <circle cx="12" cy="3" r="1" fill="currentColor"/>
+          <path d="M9 8h6"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Airport Runway Management System</h1>
+        <div class="sub">
+          <span class="badge"><span class="pulse"></span>Live Visualizer</span>
+          <span style="opacity:.8">C++ scheduler &middot; mirrored in the browser</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="head-stats">
+      <div class="head-stat">
+        <span class="lbl">Pending</span>
+        <span class="v" id="stat-pending">0</span>
+      </div>
+      <div class="head-stat">
+        <span class="lbl">Waiting</span>
+        <span class="v" id="stat-waiting">0</span>
+      </div>
+      <div class="head-stat">
+        <span class="lbl">Active</span>
+        <span class="v" id="stat-busy">0/0</span>
+      </div>
+      <div class="head-stat">
+        <span class="lbl">Completed</span>
+        <span class="v" id="stat-done">0</span>
+      </div>
+      <div class="head-stat clock">
+        <span class="lbl">T &middot; min</span>
+        <span class="v" id="clock-val">0</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================
+        TAB NAV
+       ============================================================ -->
+  <nav class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="live" role="tab">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <circle cx="12" cy="12" r="9" opacity="0.4"/>
+      </svg>
+      Live Simulation
+    </button>
+    <button class="tab-btn" data-tab="complexity" role="tab">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 3v18h18"/>
+        <path d="M7 14l4-4 4 4 5-7"/>
+      </svg>
+      Complexity &amp; Performance
+    </button>
+  </nav>
+
+  <!-- ============================================================
+        LIVE SIMULATION TAB
+       ============================================================ -->
+  <section class="tab-content live-tab" id="tab-live">
+
+  <!-- ----- CONTROLS BAR ------------------------------------------ -->
+  <div class="controls">
+
+    <div class="group">
+      <span class="label">Add Flight</span>
+      <div class="row">
+        <input type="text" id="f-num"     class="short" placeholder="Flight #" value="" />
+        <input type="text" id="f-airline" class="med"   placeholder="Airline" />
+        <input type="text" id="f-type"    class="short" placeholder="Type"    value="A320" />
+        <select id="f-dir">
+          <option value="ARR">ARR</option>
+          <option value="DEP">DEP</option>
+        </select>
+        <input type="number" id="f-fuel" class="tiny" min="0" max="100" value="80" />
+        <label class="check"><input type="checkbox" id="f-emergency"/>EMG</label>
+        <button id="add-flight">Add</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label">Add Runway</span>
+      <div class="row">
+        <input type="text"   id="r-name" class="short" placeholder="Name" value="RW-EXTRA" />
+        <input type="number" id="r-svc"  class="tiny"  min="1" max="20"  value="3" />
+        <button id="add-runway" class="ghost">Add</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label">Promote to Emergency</span>
+      <div class="row">
+        <input type="text" id="e-num" class="short" placeholder="Flight #"/>
+        <button id="declare-emergency" class="warn">Promote</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label">Simulation</span>
+      <div class="row">
+        <input type="number" id="t-mins" class="tiny" min="1" max="120" value="1"/>
+        <button id="tick-btn">Tick</button>
+        <button id="run-btn" class="ok">Auto-Run</button>
+        <button id="stop-btn" class="ghost" style="display:none">Stop</button>
+        <button id="reset-btn" class="ghost">Reset</button>
+        <button id="demo-btn"  class="ghost">Load Demo</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label" title="Drain dispatches every pending flight per tick (queues fill).&#10;Single dispatches one per tick (matches CLI exactly).">Dispatch Mode</span>
+      <div class="row segmented" id="dispatch-toggle">
+        <button class="seg active" data-mode="drain">Drain</button>
+        <button class="seg"        data-mode="single">Single</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================
+        RUNWAYS
+       ============================================================ -->
+  <div class="panel runways-panel">
+    <div class="panel-header">
+      <h2>Runways</h2>
+      <span class="count" id="runways-count">0</span>
+    </div>
+    <div class="panel-body" id="runways-body"></div>
+    <div class="legend">
+      <span class="swatch"><span class="dot" style="background:var(--text-muted)"></span>idle</span>
+      <span class="swatch"><span class="dot" style="background:var(--emerald)"></span>busy</span>
+      <span class="swatch"><span class="dot" style="background:var(--rose)"></span>emergency flight</span>
+      <span class="swatch"><span class="dot" style="background:var(--amber)"></span>low fuel (&lt; 30%)</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+        PRIORITY HEAP
+       ============================================================ -->
+  <div class="panel heap-panel">
+    <div class="panel-header">
+      <h2>Priority Heap &mdash; Pending Flights</h2>
+      <span class="count" id="heap-count">0 pending</span>
+    </div>
+    <div class="panel-body" id="heap-body">
+      <svg id="heap-svg" class="heap-svg" viewBox="0 0 800 400"
+           preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <radialGradient id="grad-normal" cx="35%" cy="32%" r="68%">
+            <stop offset="0%"   stop-color="#a5b4fc"/>
+            <stop offset="55%"  stop-color="#6366f1"/>
+            <stop offset="100%" stop-color="#3730a3"/>
+          </radialGradient>
+          <radialGradient id="grad-fuel" cx="35%" cy="32%" r="68%">
+            <stop offset="0%"   stop-color="#fde68a"/>
+            <stop offset="55%"  stop-color="#f59e0b"/>
+            <stop offset="100%" stop-color="#92400e"/>
+          </radialGradient>
+          <radialGradient id="grad-emerg" cx="35%" cy="32%" r="68%">
+            <stop offset="0%"   stop-color="#fca5a5"/>
+            <stop offset="55%"  stop-color="#ef4444"/>
+            <stop offset="100%" stop-color="#7f1d1d"/>
+          </radialGradient>
+        </defs>
+      </svg>
+      <div id="heap-empty" class="heap-empty" style="display:none">
+        <div class="icon">&#9992;</div>
+        <div>no pending flights</div>
+        <div style="font-size:11px">add one with the form above</div>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="swatch"><span class="dot" style="background:var(--primary)"></span>normal</span>
+      <span class="swatch"><span class="dot" style="background:var(--amber)"></span>low fuel</span>
+      <span class="swatch"><span class="dot" style="background:var(--rose)"></span>emergency</span>
+      <span style="margin-left:auto">root = next to dispatch &middot; hover for details</span>
+    </div>
+
+    <div class="spark-row">
+      <div class="spark-block">
+        <div class="lbl">Pending heap <span class="v" id="spark-pending-now">0</span></div>
+        <svg class="spark-svg" id="spark-pending"
+             viewBox="0 0 240 28" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="spark-block">
+        <div class="lbl">Active runways <span class="v" id="spark-busy-now">0</span></div>
+        <svg class="spark-svg" id="spark-busy"
+             viewBox="0 0 240 28" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="spark-block">
+        <div class="lbl">Completed <span class="v" id="spark-done-now">0</span></div>
+        <svg class="spark-svg" id="spark-done"
+             viewBox="0 0 240 28" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+        PER-RUNWAY QUEUES
+       ============================================================ -->
+  <div class="panel queues-panel">
+    <div class="panel-header">
+      <h2>Per-Runway Queues (FIFO)</h2>
+      <span class="count" id="queues-count">0 cleared</span>
+    </div>
+    <div class="panel-body" id="queues-body"></div>
+  </div>
+
+  <!-- ============================================================
+        FLIGHT LOG
+       ============================================================ -->
+  <div class="panel log-panel">
+    <div class="panel-header">
+      <h2>Flight Log (Completions in Order)</h2>
+      <span class="count" id="log-count">0</span>
+    </div>
+    <div class="panel-body" id="log-body">
+      <ul class="log-list" id="log-list"></ul>
+      <div id="log-empty" class="log-empty">
+        <div class="icon">&#10004;</div>
+        <div>no completed flights yet</div>
+        <div style="font-size:11px">press Tick or Auto-Run to advance time</div>
+      </div>
+    </div>
+  </div>
+
+  </section>
+  <!-- ============================================================
+        COMPLEXITY & PERFORMANCE TAB
+       ============================================================ -->
+  <section class="tab-content complexity-tab" id="tab-complexity" hidden>
+
+    <!-- Live op counters -->
+    <div class="op-strip">
+      <div class="op-card">
+        <div class="op-card-head">
+          <span class="op-icon" style="background:linear-gradient(135deg,#6366f1,#4338ca)">&#8593;</span>
+          <div>
+            <div class="op-name">MaxHeap.push</div>
+            <div class="op-sub mono">heap insert &middot; sift-up</div>
+          </div>
+        </div>
+        <div class="op-value mono" id="op-heap-push">0</div>
+        <div class="op-bigO">O(log n)</div>
+      </div>
+      <div class="op-card">
+        <div class="op-card-head">
+          <span class="op-icon" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9)">&#8595;</span>
+          <div>
+            <div class="op-name">MaxHeap.pop</div>
+            <div class="op-sub mono">extract-max &middot; sift-down</div>
+          </div>
+        </div>
+        <div class="op-value mono" id="op-heap-pop">0</div>
+        <div class="op-bigO">O(log n)</div>
+      </div>
+      <div class="op-card">
+        <div class="op-card-head">
+          <span class="op-icon" style="background:linear-gradient(135deg,#06b6d4,#0e7490)">&#8594;</span>
+          <div>
+            <div class="op-name">Queue.enqueue</div>
+            <div class="op-sub mono">tail-pointer append</div>
+          </div>
+        </div>
+        <div class="op-value mono" id="op-q-enq">0</div>
+        <div class="op-bigO">O(1)</div>
+      </div>
+      <div class="op-card">
+        <div class="op-card-head">
+          <span class="op-icon" style="background:linear-gradient(135deg,#10b981,#047857)">&#8592;</span>
+          <div>
+            <div class="op-name">Queue.dequeue</div>
+            <div class="op-sub mono">head-pointer pop</div>
+          </div>
+        </div>
+        <div class="op-value mono" id="op-q-deq">0</div>
+        <div class="op-bigO">O(1)</div>
+      </div>
+      <div class="op-card">
+        <div class="op-card-head">
+          <span class="op-icon" style="background:linear-gradient(135deg,#f59e0b,#b45309)">&#8645;</span>
+          <div>
+            <div class="op-name">heap compares</div>
+            <div class="op-sub mono">priority comparisons</div>
+          </div>
+        </div>
+        <div class="op-value mono" id="op-heap-cmp">0</div>
+        <div class="op-bigO">cumulative</div>
+      </div>
+      <div class="op-card">
+        <div class="op-card-head">
+          <span class="op-icon" style="background:linear-gradient(135deg,#ef4444,#991b1b)">&#8635;</span>
+          <div>
+            <div class="op-name">heap rebuilds</div>
+            <div class="op-sub mono">declareEmergency</div>
+          </div>
+        </div>
+        <div class="op-value mono" id="op-heap-rebuild">0</div>
+        <div class="op-bigO">O(n)</div>
+      </div>
+    </div>
+
+    <!-- Theoretical Big-O comparison + Operations table -->
+    <div class="panel complexity-bigo-panel">
+      <div class="panel-header">
+        <h2>Big-O Comparison &mdash; Theoretical Growth</h2>
+        <span class="count">f(n) for n = 1 .. 100</span>
+      </div>
+      <div class="panel-body">
+        <svg id="bigo-svg" class="chart-svg" viewBox="0 0 720 360"
+             preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="chart-legend" id="bigo-legend"></div>
+      </div>
+    </div>
+
+    <div class="panel complexity-table-panel">
+      <div class="panel-header">
+        <h2>Operations in this Project</h2>
+        <span class="count">where each runs</span>
+      </div>
+      <div class="panel-body">
+        <table class="op-table">
+          <thead>
+            <tr><th>Operation</th><th>Where it runs</th><th class="r">Avg</th><th class="r">Worst</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">MaxHeap.push</td>      <td>register flight, dispatch</td>     <td class="r mono c-good">O(log n)</td>   <td class="r mono c-good">O(log n)</td></tr>
+            <tr><td class="mono">MaxHeap.pop</td>       <td>tick &rarr; dispatch</td>          <td class="r mono c-good">O(log n)</td>   <td class="r mono c-good">O(log n)</td></tr>
+            <tr><td class="mono">MaxHeap.rebuild</td>   <td>declareEmergency</td>              <td class="r mono c-warn">O(n)</td>       <td class="r mono c-warn">O(n)</td></tr>
+            <tr><td class="mono">MaxHeap.top</td>       <td>peek pending</td>                  <td class="r mono c-best">O(1)</td>       <td class="r mono c-best">O(1)</td></tr>
+            <tr><td class="mono">Queue.enqueue</td>     <td>clearFlight, log</td>              <td class="r mono c-best">O(1)</td>       <td class="r mono c-best">O(1)</td></tr>
+            <tr><td class="mono">Queue.dequeue</td>     <td>tick &rarr; serve next</td>        <td class="r mono c-best">O(1)</td>       <td class="r mono c-best">O(1)</td></tr>
+            <tr><td class="mono">pickRunway</td>        <td>least-load selection</td>          <td class="r mono c-warn">O(R)</td>       <td class="r mono c-warn">O(R)</td></tr>
+            <tr><td class="mono">Scheduler.tick</td>    <td>1-minute step</td>                 <td class="r mono">O(R + log n)</td>      <td class="r mono">O(n log n)</td></tr>
+          </tbody>
+        </table>
+        <div class="table-footnote">
+          <em>n</em> = pending flights in heap, <em>R</em> = number of runways.
+          A drain-mode tick that dispatches all pending flights costs
+          <em>O(n &middot; (R + log n))</em>.
+        </div>
+      </div>
+    </div>
+
+    <!-- Live benchmark -->
+    <div class="panel complexity-bench-panel">
+      <div class="panel-header">
+        <h2>Live Benchmark &mdash; Run in Your Browser</h2>
+        <span class="count" id="bench-status">idle</span>
+      </div>
+      <div class="panel-body">
+        <div class="bench-controls">
+          <span class="bench-label">Sizes:</span>
+          <label class="check-pill"><input type="checkbox" data-size="100"   checked> 100</label>
+          <label class="check-pill"><input type="checkbox" data-size="1000"  checked> 1 000</label>
+          <label class="check-pill"><input type="checkbox" data-size="10000" checked> 10 000</label>
+          <label class="check-pill"><input type="checkbox" data-size="50000" checked> 50 000</label>
+          <label class="check-pill"><input type="checkbox" data-size="100000"> 100 000</label>
+          <button id="bench-run">Run benchmark</button>
+          <button id="bench-clear" class="ghost">Clear</button>
+        </div>
+        <svg id="bench-svg" class="chart-svg" viewBox="0 0 720 320"
+             preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="chart-legend" id="bench-legend"></div>
+        <div class="bench-note">
+          Runs the actual <code>MaxHeap</code> and <code>Queue</code> classes
+          in the page (the same JS that powers the simulator). Times are
+          per-operation (microseconds) measured with
+          <code>performance.now()</code>. Y-axis uses a logarithmic scale so
+          the O(1) and O(log n) curves are both readable.
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Floating tooltip used by the heap nodes -->
+  <div id="hover-card" class="hover-card" hidden></div>
+
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+/* ====================================================================
+    Backend port - mirrors src/ds/MaxHeap.h, src/ds/Queue.h,
+    src/model/{Flight,Runway}, src/Scheduler exactly.
+
+    The classes are *instrumented* with operation counters that the
+    Complexity tab reads. The counters do not affect correctness; they
+    are pure observers. Each op increments a counter on `globalOps`.
+    ==================================================================== */
+
+const globalOps = {
+  heapPush: 0, heapPop: 0, heapCompare: 0, heapSwap: 0, heapRebuild: 0,
+  queueEnqueue: 0, queueDequeue: 0,
+  pickRunway: 0,
+  reset() {
+    for (const k of Object.keys(this)) if (typeof this[k] === "number") this[k] = 0;
+  },
+};
+
+class MaxHeap {
+  constructor() { this.data = []; }
+  size()  { return this.data.length; }
+  empty() { return this.data.length === 0; }
+  top()   { return this.empty() ? null : this.data[0]; }
+  raw()   { return this.data; }
+  push(v) { globalOps.heapPush++; this.data.push(v); this._siftUp(this.data.length - 1); }
+  pop() {
+    if (this.empty()) return null;
+    globalOps.heapPop++;
+    const top = this.data[0];
+    const last = this.data.pop();
+    if (!this.empty()) {
+      this.data[0] = last;
+      this._siftDown(0);
+    }
+    return top;
+  }
+  rebuild() {
+    globalOps.heapRebuild++;
+    for (let i = (this.data.length >> 1) - 1; i >= 0; i--) this._siftDown(i);
+  }
+  _less(a, b) { globalOps.heapCompare++; return a.priority() < b.priority(); }
+  _swap(i, j) { globalOps.heapSwap++;
+    [this.data[i], this.data[j]] = [this.data[j], this.data[i]]; }
+  _siftUp(i) {
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this._less(this.data[p], this.data[i])) { this._swap(p, i); i = p; }
+      else break;
+    }
+  }
+  _siftDown(i) {
+    const n = this.data.length;
+    while (true) {
+      const l = 2 * i + 1, r = 2 * i + 2;
+      let largest = i;
+      if (l < n && this._less(this.data[largest], this.data[l])) largest = l;
+      if (r < n && this._less(this.data[largest], this.data[r])) largest = r;
+      if (largest === i) break;
+      this._swap(i, largest);
+      i = largest;
+    }
+  }
+}
+
+class Queue {
+  constructor() { this.head = null; this.tail = null; this.count = 0; }
+  size()  { return this.count; }
+  empty() { return this.count === 0; }
+  enqueue(v) {
+    globalOps.queueEnqueue++;
+    const node = { value: v, next: null };
+    if (this.tail) this.tail.next = node; else this.head = node;
+    this.tail = node;
+    this.count++;
+  }
+  dequeue() {
+    if (!this.head) return null;
+    globalOps.queueDequeue++;
+    const v = this.head.value;
+    this.head = this.head.next;
+    if (!this.head) this.tail = null;
+    this.count--;
+    return v;
+  }
+  front() { return this.head ? this.head.value : null; }
+  toArray() {
+    const arr = [];
+    let n = this.head;
+    while (n) { arr.push(n.value); n = n.next; }
+    return arr;
+  }
+}
+
+class Flight {
+  static EMERGENCY_BONUS    = 10000;
+  static LOW_FUEL_THRESHOLD = 30;
+  static FUEL_FACTOR        = 200;
+
+  constructor(num, airline, type, direction, fuel, emergency = false) {
+    this.num       = num;
+    this.airline   = airline   || "?";
+    this.type      = type      || "?";
+    this.direction = direction || "ARR";
+    this.fuel      = Math.max(0, Math.min(100, Number(fuel) | 0));
+    this.emergency = !!emergency;
+    this.waitingTime = 0;
+  }
+  priority() {
+    let p = this.waitingTime;
+    if (this.fuel < Flight.LOW_FUEL_THRESHOLD) {
+      p += (Flight.LOW_FUEL_THRESHOLD - this.fuel) * Flight.FUEL_FACTOR;
+    }
+    if (this.emergency) p += Flight.EMERGENCY_BONUS;
+    return p;
+  }
+  isLowFuel() { return this.fuel < Flight.LOW_FUEL_THRESHOLD; }
+  incWait(m)  { if (m > 0) this.waitingTime += m; }
+}
+
+class Runway {
+  constructor(name, serviceTime = 3) {
+    this.name        = name;
+    this.serviceTime = serviceTime > 0 ? serviceTime : 3;
+    this.waiting     = new Queue();
+    this.completed   = new Queue();
+    this.busy        = false;
+    this.remaining   = 0;
+    this.current     = null;
+    this.totalOps    = 0;
+  }
+  load() { return this.waiting.size() + (this.busy ? this.remaining : 0); }
+  clearFlight(f) { this.waiting.enqueue(f); }
+  hasCompleted() { return !this.completed.empty(); }
+  takeCompleted() { return this.completed.dequeue(); }
+  tick(minutes = 1) {
+    for (let m = 0; m < minutes; m++) {
+      if (!this.busy && !this.waiting.empty()) {
+        this.current   = this.waiting.dequeue();
+        this.busy      = true;
+        this.remaining = this.serviceTime;
+      }
+      if (this.busy) {
+        this.remaining--;
+        if (this.remaining <= 0) {
+          this.completed.enqueue(this.current);
+          this.totalOps++;
+          this.current = null;
+          this.busy    = false;
+        }
+      }
+    }
+  }
+}
+
+class Scheduler {
+  constructor() {
+    this.pending      = new MaxHeap();
+    this.runways      = [];
+    this.log          = [];
+    this.currentTime  = 0;
+    /* dispatchMode:
+        "single" - one dispatch per tick (matches the C++ CLI exactly).
+        "drain"  - dispatch every pending flight each tick, distributed
+                   to the least-loaded runway. The waiting queues fill
+                   up immediately, so all runways become busy in a
+                   single tick once you have >= 1 flight per runway. */
+    this.dispatchMode = "drain";
+    /* History (used by the throughput sparkline + complexity tab). */
+    this.history      = []; // { t, pending, busy, completed }
+  }
+  addRunway(name, serviceTime) {
+    this.runways.push(new Runway(name, serviceTime));
+  }
+  registerFlight(f) { this.pending.push(f); }
+  declareEmergency(num) {
+    const arr = this.pending.raw();
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].num === num) {
+        if (arr[i].emergency) return false;
+        arr[i].emergency = true;
+        this.pending.rebuild();
+        return true;
+      }
+    }
+    return false;
+  }
+  pickRunway() {
+    if (this.runways.length === 0) return -1;
+    globalOps.pickRunway++;
+    let bestIdx = 0;
+    let bestLoad = this.runways[0].load();
+    for (let i = 1; i < this.runways.length; i++) {
+      const l = this.runways[i].load();
+      if (l < bestLoad) { bestIdx = i; bestLoad = l; }
+    }
+    return bestIdx;
+  }
+  _dispatchOne() {
+    const next = this.pending.pop();
+    const idx  = this.pickRunway();
+    this.runways[idx].clearFlight(next);
+  }
+  tick(minutes = 1) {
+    if (minutes <= 0) return;
+    for (let m = 0; m < minutes; m++) {
+      // 1. Age every pending flight by +1 min (uniform shift preserves heap order)
+      const arr = this.pending.raw();
+      for (let i = 0; i < arr.length; i++) arr[i].incWait(1);
+
+      // 2. Dispatch from heap to least-loaded runway(s)
+      if (this.runways.length > 0) {
+        if (this.dispatchMode === "drain") {
+          while (!this.pending.empty()) this._dispatchOne();
+        } else if (!this.pending.empty()) {
+          this._dispatchOne();
+        }
+      }
+
+      // 3. Each runway advances by 1 min
+      for (let i = 0; i < this.runways.length; i++) this.runways[i].tick(1);
+
+      // 4. Drain completions into the global log
+      this.currentTime++;
+      for (let i = 0; i < this.runways.length; i++) {
+        const r = this.runways[i];
+        while (r.hasCompleted()) {
+          const f = r.takeCompleted();
+          this.log.push({
+            t: this.currentTime,
+            num: f.num,
+            airline: f.airline,
+            runway: r.name,
+            wasEmergency: f.emergency,
+            wasLowFuel:   f.isLowFuel(),
+            waited:       f.waitingTime,
+          });
+        }
+      }
+
+      // 5. Snapshot for the live charts
+      this.history.push({
+        t: this.currentTime,
+        pending:   this.pending.size(),
+        busy:      this.runways.filter(r => r.busy).length,
+        waiting:   this.runways.reduce((s, r) => s + r.waiting.size(), 0),
+        completed: this.log.length,
+      });
+      if (this.history.length > 240) this.history.shift();
+    }
+  }
+  totalCompleted() { return this.log.length; }
+  totalWaiting()   { return this.runways.reduce((s, r) => s + r.waiting.size(), 0); }
+}
+
+/* ====================================================================
+    Renderer
+    ==================================================================== */
+
+const sched = new Scheduler();
+sched.addRunway("RW-09L", 3);
+sched.addRunway("RW-27R", 3);
+
+const $ = (id) => document.getElementById(id);
+
+function flightClass(f) {
+  if (f.emergency)   return "emergency";
+  if (f.isLowFuel()) return "low-fuel";
+  return "";
+}
+
+function renderClock() {
+  $("clock-val").textContent = sched.currentTime;
+  $("stat-pending").textContent = sched.pending.size();
+  $("stat-waiting").textContent = sched.totalWaiting();
+  const busyN = sched.runways.filter(r => r.busy).length;
+  $("stat-busy").textContent = busyN + "/" + sched.runways.length;
+  $("stat-done").textContent = sched.totalCompleted();
+}
+
+/* ---- Operation counters live update (Complexity tab) ---- */
+const opIds = {
+  heapPush:    "op-heap-push",
+  heapPop:     "op-heap-pop",
+  heapCompare: "op-heap-cmp",
+  heapRebuild: "op-heap-rebuild",
+  queueEnqueue:"op-q-enq",
+  queueDequeue:"op-q-deq",
+};
+const lastOpVals = {};
+function renderOps() {
+  for (const k of Object.keys(opIds)) {
+    const el = $(opIds[k]);
+    if (!el) continue;
+    const v = globalOps[k];
+    el.textContent = v.toLocaleString();
+    const prev = lastOpVals[k];
+    if (prev !== undefined && prev !== v) {
+      el.classList.remove("flash");
+      void el.offsetWidth;       // restart animation
+      el.classList.add("flash");
+    }
+    lastOpVals[k] = v;
+  }
+}
+
+/* Pull a short label out of a runway name, e.g. "RW-09L" -> "09L".
+   For non-standard names, strip the "RW-" prefix and truncate. */
+function runwayLabel(name) {
+  const m = name.match(/[A-Z]?\d{1,2}[A-Z]?$/i);
+  if (m) return m[0].toUpperCase();
+  return name.replace(/^RWY?-/i, "").toUpperCase().slice(0, 6);
+}
+/* Reciprocal heading at the opposite end (purely cosmetic - real runways
+   use the magnetic heading divided by 10, the opposite end is +/-180 deg). */
+function runwayLabelReverse(name) {
+  const m = name.match(/(\d{1,2})([LRC]?)$/i);
+  if (!m) return runwayLabel(name);
+  let num = parseInt(m[1], 10);
+  num = ((num + 17) % 36) + 1;
+  let side = m[2].toUpperCase();
+  if (side === "L") side = "R"; else if (side === "R") side = "L";
+  return String(num).padStart(2, "0") + side;
+}
+
+function fuelChip(f) {
+  const cls   = f.emergency ? "emergency" : f.isLowFuel() ? "low-fuel" : "fuel";
+  const label = f.emergency ? "EMG" : f.isLowFuel() ? "LOW" : "FUEL";
+  return `<span class="chip ${cls}">${label} ${f.fuel}%</span>`;
+}
+
+function renderRunways() {
+  const body = $("runways-body");
+  body.innerHTML = "";
+  $("runways-count").textContent =
+    sched.runways.length + (sched.runways.length === 1 ? " runway" : " runways");
+
+  if (sched.runways.length === 0) {
+    body.innerHTML =
+      '<div class="queue-empty" style="padding:20px;text-align:center">' +
+      'no runways &mdash; add one with the form above</div>';
+    return;
+  }
+
+  for (const r of sched.runways) {
+    const card = document.createElement("div");
+    card.className = "runway" + (r.busy ? " busy" : "");
+    const status = r.busy ? "Serving" : "Idle";
+    const cur = r.busy ? r.current : null;
+    const elapsed = r.busy ? (r.serviceTime - r.remaining) : 0;
+    const pct = r.busy ? (elapsed / r.serviceTime) * 100 : 0;
+
+    /* Plane slides from threshold-left (~10%) to threshold-right (~90%) as
+       service progresses. Idle runway shows a faint "READY" overlay. */
+    const planeLeft = cur ? (10 + (pct / 100) * 80).toFixed(1) + "%" : "50%";
+    const planeCls = cur ? flightClass(cur) : "";
+
+    const label  = runwayLabel(r.name);
+    const labelR = runwayLabelReverse(r.name) || label;
+
+    const planeSvg = `
+      <svg viewBox="0 0 24 24" fill="currentColor" style="width:1em;height:1em">
+        <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/>
+      </svg>`;
+
+    card.innerHTML = `
+      <div class="runway-head">
+        <div class="runway-name"><span class="dot"></span>${r.name}</div>
+        <div class="runway-status">${status} &middot; svc ${r.serviceTime}m &middot; ${r.totalOps} ops</div>
+      </div>
+
+      <div class="runway-strip">
+        <span class="threshold l"></span>
+        <span class="threshold r"></span>
+        <span class="rwy-num l">${label}</span>
+        <span class="rwy-num r">${labelR}</span>
+        ${cur ? `<span class="plane ${planeCls}" style="left:${planeLeft}">${planeSvg}</span>`
+              : `<span class="empty-text">Runway Clear</span>`}
+      </div>
+
+      ${cur ? `
+        <div class="runway-info">
+          <span class="id">${cur.num}</span>
+          <span class="meta">
+            <span class="chip dir">${cur.direction}</span>
+            <span>${cur.airline}</span>
+            <span style="color:var(--text-muted)">&middot;</span>
+            <span>${cur.type}</span>
+            ${fuelChip(cur)}
+          </span>
+          <span class="priority">P=${cur.priority()}</span>
+        </div>
+        <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
+        <div class="progress-line">
+          <span>SERVICE</span>
+          <span>${elapsed} / ${r.serviceTime} min</span>
+        </div>
+      ` : `
+        <div class="runway-info empty">awaiting next clearance</div>
+      `}
+    `;
+    body.appendChild(card);
+  }
+}
+
+/* The heap renderer keeps a stable mapping from flight number to its
+   <g> element so that CSS transitions on `transform` fire smoothly when
+   the heap rearranges itself (sift-up / sift-down / pop). New nodes
+   fade in, popped nodes fade out, surviving nodes glide. */
+const SVG_NS = "http://www.w3.org/2000/svg";
+const heapNodeMap = new Map();   // flight.num -> <g> element
+let   heapEdgeEls = [];          // recycled <line> elements
+
+function heapPos(i, levelGap, W, padTop) {
+  const level = Math.floor(Math.log2(i + 1));
+  const start = (1 << level) - 1;
+  const slot  = i - start;
+  const total = 1 << level;
+  return { x: ((slot + 0.5) / total) * W, y: padTop + level * levelGap };
+}
+
+function renderHeap() {
+  const svg   = $("heap-svg");
+  const empty = $("heap-empty");
+  const data  = sched.pending.raw();
+
+  $("heap-count").textContent = data.length + " pending";
+
+  if (data.length === 0) {
+    // Fade everything out and clear the map.
+    for (const [, g] of heapNodeMap) {
+      g.style.opacity = "0";
+      setTimeout(() => g.remove(), 320);
+    }
+    heapNodeMap.clear();
+    heapEdgeEls.forEach(e => e.remove());
+    heapEdgeEls = [];
+    svg.style.display  = "none";
+    empty.style.display = "flex";
+    return;
+  }
+  svg.style.display  = "block";
+  empty.style.display = "none";
+
+  const W = 800, H = 400, padTop = 50, padBottom = 30;
+  const maxLevel = Math.floor(Math.log2(data.length));
+  const levelGap = (H - padTop - padBottom) / Math.max(1, maxLevel);
+  const radius   = data.length > 15 ? 22 : data.length > 7 ? 26 : 30;
+
+  /* ---- 1. Update or create node <g> elements (nodes layer) ---- */
+  const seen = new Set();
+  for (let i = 0; i < data.length; i++) {
+    const f = data[i];
+    const p = heapPos(i, levelGap, W, padTop);
+    seen.add(f.num);
+
+    let g = heapNodeMap.get(f.num);
+    if (!g) {
+      g = document.createElementNS(SVG_NS, "g");
+      g.setAttribute("class", "heap-node " + flightClass(f));
+      g.setAttribute("transform", `translate(${p.x}, ${p.y})`);
+      g.style.opacity = "0";
+      g.style.cursor  = "pointer";
+      g.innerHTML = `
+        <circle r="${radius}"></circle>
+        <text dy="-3" font-size="${radius * 0.4}" fill="white"
+              text-anchor="middle">${f.num}</text>
+        <text dy="${radius * 0.4 + 4}" font-size="${radius * 0.32}" fill="white"
+              text-anchor="middle" opacity="0.85">P=${f.priority()}</text>
+      `;
+      g.addEventListener("mouseenter", (ev) => showHoverCard(f, ev));
+      g.addEventListener("mouseleave", hideHoverCard);
+      svg.appendChild(g);
+      heapNodeMap.set(f.num, g);
+      // Fade in on the next frame so the transition fires.
+      requestAnimationFrame(() => { g.style.opacity = "1"; });
+    } else {
+      g.setAttribute("class", "heap-node " + flightClass(f));
+      g.setAttribute("transform", `translate(${p.x}, ${p.y})`);
+      const ts = g.querySelectorAll("text");
+      if (ts[1]) ts[1].textContent = "P=" + f.priority();
+      // Resize circle/text if our node-radius bucket changed.
+      const c = g.querySelector("circle");
+      if (c && Number(c.getAttribute("r")) !== radius) {
+        c.setAttribute("r", radius);
+        if (ts[0]) ts[0].setAttribute("font-size", radius * 0.4);
+        if (ts[1]) ts[1].setAttribute("font-size", radius * 0.32);
+      }
+    }
+  }
+
+  /* ---- 2. Fade out flights that left the heap ---- */
+  for (const [num, g] of heapNodeMap) {
+    if (!seen.has(num)) {
+      g.style.opacity = "0";
+      heapNodeMap.delete(num);
+      setTimeout(() => g.remove(), 320);
+    }
+  }
+
+  /* ---- 3. Edges (cheap to fully recompute; their endpoints animate) ---- */
+  // Grow / shrink the edge pool to match nodeCount - 1 lines.
+  const need = data.length - 1;
+  while (heapEdgeEls.length < need) {
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("class", "heap-edge");
+    svg.insertBefore(line, svg.firstChild);   // edges render BEHIND nodes
+    heapEdgeEls.push(line);
+  }
+  while (heapEdgeEls.length > need) {
+    const line = heapEdgeEls.pop();
+    line.remove();
+  }
+  for (let i = 1; i < data.length; i++) {
+    const p = heapPos((i - 1) >> 1, levelGap, W, padTop);
+    const c = heapPos(i,            levelGap, W, padTop);
+    const line = heapEdgeEls[i - 1];
+    line.setAttribute("x1", p.x); line.setAttribute("y1", p.y);
+    line.setAttribute("x2", c.x); line.setAttribute("y2", c.y);
+  }
+}
+
+function renderQueues() {
+  const body = $("queues-body");
+  body.innerHTML = "";
+  let totalWaiting = 0;
+
+  if (sched.runways.length === 0) {
+    body.innerHTML = '<div class="queue-empty">no runways yet</div>';
+    $("queues-count").textContent = "0 waiting";
+    return;
+  }
+
+  for (const r of sched.runways) {
+    const arr = r.waiting.toArray();
+    totalWaiting += arr.length;
+
+    const row = document.createElement("div");
+    row.className = "queue-row";
+
+    const name = document.createElement("div");
+    name.className = "qname";
+    name.textContent = r.name;
+    row.appendChild(name);
+
+    const cells = document.createElement("div");
+    cells.className = "queue-cells";
+
+    /* Show whatever is currently being SERVED on this runway as a faint
+       "now serving" cell, so the queue makes sense in the drain mode where
+       the queue gets dequeued every tick. */
+    if (r.busy && r.current) {
+      const now = document.createElement("span");
+      now.className = "queue-front-label";
+      now.innerHTML = "&#9992; SERVING";
+      cells.appendChild(now);
+
+      const cur = document.createElement("span");
+      cur.className = "queue-cell serving " + flightClass(r.current);
+      cur.textContent = r.current.num;
+      cur.title = `${r.current.airline} ${r.current.type} - fuel ${r.current.fuel}% - P=${r.current.priority()}`;
+      cells.appendChild(cur);
+
+      if (arr.length > 0) {
+        const sep = document.createElement("span");
+        sep.className = "queue-arrow";
+        sep.innerHTML = "&rarr;";
+        cells.appendChild(sep);
+      }
+    }
+
+    if (arr.length === 0 && !r.busy) {
+      const empty = document.createElement("span");
+      empty.className = "queue-empty";
+      empty.textContent = "idle";
+      cells.appendChild(empty);
+    } else if (arr.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "queue-empty";
+      empty.textContent = "no flights queued";
+      cells.appendChild(empty);
+    } else {
+      const front = document.createElement("span");
+      front.className = "queue-front-label";
+      front.innerHTML = "FRONT &rarr;";
+      cells.appendChild(front);
+
+      arr.forEach((f, i) => {
+        if (i > 0) {
+          const a = document.createElement("span");
+          a.className = "queue-arrow";
+          a.innerHTML = "&rarr;";
+          cells.appendChild(a);
+        }
+        const cell = document.createElement("span");
+        cell.className = "queue-cell " + flightClass(f);
+        cell.textContent = f.num;
+        cell.title = `${f.airline} ${f.type} - fuel ${f.fuel}% - P=${f.priority()}`;
+        cells.appendChild(cell);
+      });
+    }
+    row.appendChild(cells);
+    body.appendChild(row);
+  }
+
+  $("queues-count").textContent = totalWaiting + " waiting";
+}
+
+function renderLog() {
+  const list  = $("log-list");
+  const empty = $("log-empty");
+  const log   = sched.log;
+
+  $("log-count").textContent =
+    log.length + (log.length === 1 ? " completion" : " completions");
+
+  if (log.length === 0) {
+    list.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+
+  list.innerHTML = log.map(e => {
+    const cls = e.wasEmergency ? " emergency"
+              : e.wasLowFuel   ? " low-fuel"
+              : "";
+    const tagHtml = e.wasEmergency
+        ? `<span class="log-tag" style="color:#b91c1c">EMG</span>`
+        : e.wasLowFuel
+        ? `<span class="log-tag" style="color:#92400e">LOW FUEL</span>`
+        : "";
+    return `
+      <li class="log-item${cls}">
+        <span class="log-time">T=${e.t}</span>
+        <span>
+          <span class="log-flight">${e.num}</span>
+          ${tagHtml}
+          <div class="log-meta">${e.airline} &middot; cleared on ${e.runway}</div>
+        </span>
+        <span class="log-meta">waited ${e.waited}m</span>
+      </li>`;
+  }).join("");
+}
+
+function render() {
+  renderClock();
+  renderRunways();
+  renderHeap();
+  renderQueues();
+  renderLog();
+  renderOps();
+  renderSparklines();
+}
+
+/* ====================================================================
+    Heap node hover card (rich tooltip)
+    ==================================================================== */
+const hoverCard = $("hover-card");
+function showHoverCard(f, ev) {
+  hoverCard.hidden = false;
+  hoverCard.innerHTML = `
+    <div class="hc-id">&#9992; ${f.num}</div>
+    <div class="hc-row"><span class="k">Airline</span><span class="v">${f.airline}</span></div>
+    <div class="hc-row"><span class="k">Aircraft</span><span class="v">${f.type}</span></div>
+    <div class="hc-row"><span class="k">Direction</span><span class="v">${f.direction}</span></div>
+    <div class="hc-row"><span class="k">Fuel</span><span class="v">${f.fuel}%</span></div>
+    <div class="hc-row"><span class="k">Wait</span><span class="v">${f.waitingTime} min</span></div>
+    ${f.emergency ? '<div class="hc-row"><span class="k">Status</span><span class="v" style="color:#991b1b">EMERGENCY</span></div>' : ""}
+    ${f.isLowFuel() && !f.emergency ? '<div class="hc-row"><span class="k">Status</span><span class="v" style="color:#92400e">LOW FUEL</span></div>' : ""}
+    <div class="hc-priority"><span class="k">Priority</span><span class="v">${f.priority()}</span></div>
+  `;
+  moveHoverCard(ev);
+}
+function moveHoverCard(ev) {
+  if (hoverCard.hidden) return;
+  const x = ev.clientX, y = ev.clientY;
+  const w = hoverCard.offsetWidth, h = hoverCard.offsetHeight;
+  const ox = (x + 12 + w > window.innerWidth)  ? -w - 24 : 0;
+  const oy = (y + 12 + h > window.innerHeight) ? -h - 24 : 0;
+  hoverCard.style.left = (x + ox) + "px";
+  hoverCard.style.top  = (y + oy) + "px";
+  hoverCard.style.transform = "translate(12px, 12px)";
+}
+function hideHoverCard() { hoverCard.hidden = true; }
+document.addEventListener("mousemove", moveHoverCard);
+
+/* ====================================================================
+    Tiny SVG sparkline used at the bottom of the heap panel.
+    Builds a polyline + filled area chart that fits the 240x28 viewBox.
+    ==================================================================== */
+function drawSparkline(svgEl, values, color) {
+  const W = 240, H = 28;
+  while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+  if (values.length < 2) return;
+
+  const max = Math.max(1, ...values);
+  const min = Math.min(0, ...values);
+  const span = Math.max(1, max - min);
+
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * W;
+    const y = H - 2 - ((v - min) / span) * (H - 4);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const ns = "http://www.w3.org/2000/svg";
+  const fill = document.createElementNS(ns, "polygon");
+  fill.setAttribute("points", `0,${H} ${pts.join(" ")} ${W},${H}`);
+  fill.setAttribute("fill", color);
+  fill.setAttribute("opacity", "0.16");
+  svgEl.appendChild(fill);
+
+  const line = document.createElementNS(ns, "polyline");
+  line.setAttribute("points", pts.join(" "));
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke", color);
+  line.setAttribute("stroke-width", "1.7");
+  line.setAttribute("stroke-linejoin", "round");
+  line.setAttribute("stroke-linecap", "round");
+  svgEl.appendChild(line);
+
+  // Last-value dot
+  const last = pts[pts.length - 1].split(",");
+  const dot = document.createElementNS(ns, "circle");
+  dot.setAttribute("cx", last[0]);
+  dot.setAttribute("cy", last[1]);
+  dot.setAttribute("r", "2.5");
+  dot.setAttribute("fill", color);
+  dot.setAttribute("stroke", "white");
+  dot.setAttribute("stroke-width", "1");
+  svgEl.appendChild(dot);
+}
+function renderSparklines() {
+  const hist = sched.history;
+  const pendingArr   = hist.map(h => h.pending);
+  const busyArr      = hist.map(h => h.busy);
+  const completedArr = hist.map(h => h.completed);
+
+  drawSparkline($("spark-pending"), pendingArr,   "#6366f1");
+  drawSparkline($("spark-busy"),    busyArr,      "#10b981");
+  drawSparkline($("spark-done"),    completedArr, "#06b6d4");
+
+  const last = hist[hist.length - 1] || { pending: 0, busy: 0, completed: 0 };
+  $("spark-pending-now").textContent = last.pending;
+  $("spark-busy-now").textContent    = last.busy + " / " + sched.runways.length;
+  $("spark-done-now").textContent    = last.completed;
+}
+
+/* ====================================================================
+    Generic SVG line chart used by the Complexity tab
+    (Big-O comparison + live benchmark).
+    ==================================================================== */
+class LineChart {
+  constructor(svgEl, opts = {}) {
+    this.svg = svgEl;
+    this.opts = Object.assign({
+      padding: { top: 24, right: 22, bottom: 44, left: 64 },
+      logY: false, logX: false,
+      xLabel: "n", yLabel: "f(n)",
+      xTicks: 6, yTicks: 5,
+      title: "",
+    }, opts);
+    this.series = [];
+  }
+  setSeries(s) { this.series = s; this.render(); }
+  setOption(k, v) { this.opts[k] = v; this.render(); }
+  _domain() {
+    let xMin = +Infinity, xMax = -Infinity, yMin = +Infinity, yMax = -Infinity;
+    for (const s of this.series) for (const p of s.points) {
+      if (p.x < xMin) xMin = p.x; if (p.x > xMax) xMax = p.x;
+      if (p.y < yMin) yMin = p.y; if (p.y > yMax) yMax = p.y;
+    }
+    if (!isFinite(xMin)) { xMin = 0; xMax = 1; }
+    if (!isFinite(yMin)) { yMin = 0; yMax = 1; }
+    if (this.opts.logY && yMin <= 0) yMin = 1e-6;
+    if (this.opts.logX && xMin <= 0) xMin = 1;
+    if (xMin === xMax) xMax = xMin + 1;
+    if (yMin === yMax) yMax = yMin + 1;
+    if (this.opts.yMin !== undefined) yMin = this.opts.yMin;
+    if (this.opts.yMax !== undefined) yMax = this.opts.yMax;
+    return { xMin, xMax, yMin, yMax };
+  }
+  render() {
+    const svg = this.svg;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    const vb = svg.viewBox.baseVal;
+    const W = vb.width, H = vb.height;
+    const P = this.opts.padding;
+    const innerW = W - P.left - P.right;
+    const innerH = H - P.top - P.bottom;
+
+    const ns = "http://www.w3.org/2000/svg";
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${P.left}, ${P.top})`);
+    svg.appendChild(g);
+
+    const { xMin, xMax, yMin, yMax } = this._domain();
+    const sx = (x) => this.opts.logX
+      ? (Math.log10(x) - Math.log10(xMin)) / (Math.log10(xMax) - Math.log10(xMin)) * innerW
+      : (x - xMin) / (xMax - xMin) * innerW;
+    const sy = (y) => this.opts.logY
+      ? innerH - (Math.log10(y) - Math.log10(yMin)) / (Math.log10(yMax) - Math.log10(yMin)) * innerH
+      : innerH - (y - yMin) / (yMax - yMin) * innerH;
+
+    /* ---- Gridlines + Y ticks ---- */
+    const yTicks = this.opts.yTicks;
+    for (let i = 0; i <= yTicks; i++) {
+      const t = i / yTicks;
+      const y = innerH * (1 - t);
+      const ln = document.createElementNS(ns, "line");
+      ln.setAttribute("class", "chart-grid");
+      ln.setAttribute("x1", 0); ln.setAttribute("x2", innerW);
+      ln.setAttribute("y1", y); ln.setAttribute("y2", y);
+      g.appendChild(ln);
+
+      const tickVal = this.opts.logY
+        ? Math.pow(10, Math.log10(yMin) + t * (Math.log10(yMax) - Math.log10(yMin)))
+        : yMin + t * (yMax - yMin);
+      const lbl = document.createElementNS(ns, "text");
+      lbl.setAttribute("class", "chart-label");
+      lbl.setAttribute("x", -8); lbl.setAttribute("y", y + 4);
+      lbl.setAttribute("text-anchor", "end");
+      lbl.textContent = formatNum(tickVal);
+      g.appendChild(lbl);
+    }
+    /* ---- X ticks ---- */
+    const xTicks = this.opts.xTicks;
+    for (let i = 0; i <= xTicks; i++) {
+      const t = i / xTicks;
+      const x = innerW * t;
+      const tickVal = this.opts.logX
+        ? Math.pow(10, Math.log10(xMin) + t * (Math.log10(xMax) - Math.log10(xMin)))
+        : xMin + t * (xMax - xMin);
+      const lbl = document.createElementNS(ns, "text");
+      lbl.setAttribute("class", "chart-label");
+      lbl.setAttribute("x", x); lbl.setAttribute("y", innerH + 16);
+      lbl.setAttribute("text-anchor", "middle");
+      lbl.textContent = formatNum(tickVal);
+      g.appendChild(lbl);
+    }
+
+    /* ---- Axes ---- */
+    const ax = document.createElementNS(ns, "line");
+    ax.setAttribute("class", "chart-axis");
+    ax.setAttribute("x1", 0); ax.setAttribute("y1", innerH);
+    ax.setAttribute("x2", innerW); ax.setAttribute("y2", innerH);
+    g.appendChild(ax);
+    const ay = document.createElementNS(ns, "line");
+    ay.setAttribute("class", "chart-axis");
+    ay.setAttribute("x1", 0); ay.setAttribute("y1", 0);
+    ay.setAttribute("x2", 0); ay.setAttribute("y2", innerH);
+    g.appendChild(ay);
+
+    /* ---- Axis labels ---- */
+    const xL = document.createElementNS(ns, "text");
+    xL.setAttribute("class", "chart-title");
+    xL.setAttribute("x", innerW / 2); xL.setAttribute("y", innerH + 36);
+    xL.setAttribute("text-anchor", "middle");
+    xL.textContent = this.opts.xLabel;
+    g.appendChild(xL);
+
+    const yL = document.createElementNS(ns, "text");
+    yL.setAttribute("class", "chart-title");
+    yL.setAttribute("transform", `rotate(-90)`);
+    yL.setAttribute("x", -innerH / 2); yL.setAttribute("y", -48);
+    yL.setAttribute("text-anchor", "middle");
+    yL.textContent = this.opts.yLabel;
+    g.appendChild(yL);
+
+    /* ---- Series lines ---- */
+    for (const s of this.series) {
+      if (s.points.length < 1) continue;
+      const path = document.createElementNS(ns, "polyline");
+      path.setAttribute("class", "chart-line");
+      path.setAttribute("stroke", s.color);
+      const pts = s.points.map(p => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ");
+      path.setAttribute("points", pts);
+      if (s.dashed) path.setAttribute("stroke-dasharray", "4 5");
+      g.appendChild(path);
+
+      if (s.markers !== false) {
+        for (const p of s.points) {
+          const c = document.createElementNS(ns, "circle");
+          c.setAttribute("class", "chart-dot");
+          c.setAttribute("cx", sx(p.x));
+          c.setAttribute("cy", sy(p.y));
+          c.setAttribute("r", 3.5);
+          c.setAttribute("fill", s.color);
+          g.appendChild(c);
+        }
+      }
+    }
+  }
+}
+function formatNum(n) {
+  if (!isFinite(n)) return "-";
+  const a = Math.abs(n);
+  if (a === 0) return "0";
+  if (a >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (a >= 1e3) return (n / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "k";
+  if (a >= 1)   return n.toFixed(a >= 10 ? 0 : 1);
+  if (a >= 0.01) return n.toFixed(2);
+  return n.toExponential(1);
+}
+function fillLegend(target, series) {
+  target.innerHTML = series.map(s =>
+    `<span class="l-item"><span class="l-swatch" style="background:${s.color}"></span>${s.name}${s.dashed ? " <span style='opacity:.6'>(theory)</span>" : ""}</span>`
+  ).join("");
+}
+
+/* ====================================================================
+    Big-O reference chart - drawn once on first complexity-tab open.
+    ==================================================================== */
+let bigoChart = null;
+function buildBigOChart() {
+  if (bigoChart) return;
+  bigoChart = new LineChart($("bigo-svg"), {
+    xLabel: "n  (input size)",
+    yLabel: "f(n)  (relative cost)",
+    xTicks: 5, yTicks: 5,
+    yMin: 0, yMax: 100,
+    padding: { top: 22, right: 22, bottom: 44, left: 56 },
+  });
+  const xs = [];
+  for (let i = 1; i <= 100; i++) xs.push(i);
+  const series = [
+    { name: "O(1)",        color: "#10b981", points: xs.map(n => ({ x: n, y: 1 })),                         markers: false },
+    { name: "O(log n)",    color: "#06b6d4", points: xs.map(n => ({ x: n, y: Math.log2(n) })),              markers: false },
+    { name: "O(n)",        color: "#6366f1", points: xs.map(n => ({ x: n, y: n })),                         markers: false },
+    { name: "O(n log n)",  color: "#a855f7", points: xs.map(n => ({ x: n, y: n * Math.log2(Math.max(1,n))})), markers: false },
+    { name: "O(n²)",       color: "#ef4444", points: xs.map(n => ({ x: n, y: n * n })),                     markers: false },
+  ];
+  /* Cap O(n²) so the curve doesn't blow up the y-axis. */
+  bigoChart.opts.yMax = 100;
+  for (const s of series)
+    for (const p of s.points)
+      if (p.y > 100) p.y = 100;
+  bigoChart.setSeries(series);
+  fillLegend($("bigo-legend"), series);
+}
+
+/* ====================================================================
+    Live benchmark - times MaxHeap and Queue in the browser.
+    ==================================================================== */
+let benchChart = null;
+function getBenchSizes() {
+  return Array.from(document.querySelectorAll('#tab-complexity input[data-size]'))
+    .filter(b => b.checked)
+    .map(b => parseInt(b.dataset.size, 10))
+    .sort((a, b) => a - b);
+}
+async function runBenchmark() {
+  const sizes = getBenchSizes();
+  if (sizes.length === 0) {
+    toast("Pick at least one size.", "warn"); return;
+  }
+  const status = $("bench-status");
+  const btn    = $("bench-run");
+  btn.disabled = true; btn.textContent = "Running...";
+  status.textContent = "running";
+
+  const results = {
+    heapPush: [], heapPop: [], queueEnq: [], queueDeq: [],
+  };
+
+  /* Yield to the UI between sizes so the page stays responsive. */
+  const yieldUI = () => new Promise(r => setTimeout(r, 16));
+
+  for (const n of sizes) {
+    status.textContent = `n = ${n.toLocaleString()}`;
+    await yieldUI();
+
+    /* Pre-generate flights so the random/build cost is not in the timed
+       region, just like the C++ benchmark we did with bench.cpp. */
+    const flights = new Array(n);
+    for (let i = 0; i < n; i++) {
+      flights[i] = new Flight("F" + i, "BM", "X", "ARR",
+                              50 + Math.floor(Math.random() * 50));
+    }
+
+    /* Heap push */
+    const h = new MaxHeap();
+    let t0 = performance.now();
+    for (let i = 0; i < n; i++) h.push(flights[i]);
+    let t1 = performance.now();
+    const usHeapPush = ((t1 - t0) * 1000) / n;
+    results.heapPush.push({ x: n, y: Math.max(1e-3, usHeapPush) });
+
+    /* Heap pop */
+    t0 = performance.now();
+    while (!h.empty()) h.pop();
+    t1 = performance.now();
+    results.heapPop.push({ x: n, y: Math.max(1e-3, ((t1 - t0) * 1000) / n) });
+
+    /* Queue enqueue */
+    const q = new Queue();
+    t0 = performance.now();
+    for (let i = 0; i < n; i++) q.enqueue(i);
+    t1 = performance.now();
+    results.queueEnq.push({ x: n, y: Math.max(1e-3, ((t1 - t0) * 1000) / n) });
+
+    /* Queue dequeue */
+    t0 = performance.now();
+    while (!q.empty()) q.dequeue();
+    t1 = performance.now();
+    results.queueDeq.push({ x: n, y: Math.max(1e-3, ((t1 - t0) * 1000) / n) });
+
+    await yieldUI();
+  }
+
+  /* Reset op counters - benchmark inflated them. */
+  globalOps.reset();
+  renderOps();
+
+  if (!benchChart) {
+    benchChart = new LineChart($("bench-svg"), {
+      xLabel: "n  (input size, log scale)",
+      yLabel: "time per op (us, log scale)",
+      logX: true, logY: true,
+      xTicks: 6, yTicks: 5,
+      padding: { top: 22, right: 22, bottom: 44, left: 64 },
+    });
+  }
+  const series = [
+    { name: "MaxHeap.push  O(log n)", color: "#6366f1", points: results.heapPush },
+    { name: "MaxHeap.pop   O(log n)", color: "#8b5cf6", points: results.heapPop  },
+    { name: "Queue.enqueue O(1)",     color: "#06b6d4", points: results.queueEnq },
+    { name: "Queue.dequeue O(1)",     color: "#10b981", points: results.queueDeq },
+  ];
+  benchChart.setSeries(series);
+  fillLegend($("bench-legend"), series);
+
+  status.textContent = `done (${sizes.length} size${sizes.length === 1 ? "" : "s"})`;
+  btn.disabled = false; btn.textContent = "Run benchmark";
+  toast("Benchmark complete.", "ok");
+}
+function clearBenchmark() {
+  if (benchChart) { benchChart.setSeries([]); }
+  $("bench-legend").innerHTML = "";
+  $("bench-status").textContent = "idle";
+}
+
+/* ====================================================================
+    Tab switching
+    ==================================================================== */
+function setActiveTab(name) {
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tab === name);
+  });
+  $("tab-live").hidden       = name !== "live";
+  $("tab-complexity").hidden = name !== "complexity";
+  if (name === "complexity") {
+    buildBigOChart();
+    renderOps();
+  }
+}
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+});
+
+/* ====================================================================
+    Toast helper
+    ==================================================================== */
+
+function toast(message, kind = "") {
+  const c = $("toast-container");
+  const t = document.createElement("div");
+  t.className = "toast " + kind;
+  const icon = kind === "warn" ? "&#9888;"
+            : kind === "ok"   ? "&#10004;"
+            : "&#9432;";
+  t.innerHTML = `<span class="ttl">${icon}</span><span>${message}</span>`;
+  c.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = "opacity 0.4s, transform 0.4s";
+    t.style.opacity = "0";
+    t.style.transform = "translateX(20px)";
+    setTimeout(() => t.remove(), 450);
+  }, 2400);
+}
+
+/* ====================================================================
+    Wiring up the controls
+    ==================================================================== */
+
+let nextDefaultFlightNum = 100;
+function defaultFlightNum() {
+  // Suggest a fresh flight number every time the form is reset.
+  return "FL" + (nextDefaultFlightNum++);
+}
+$("f-num").value = defaultFlightNum();
+$("f-airline").value = "ExampleAir";
+
+$("add-flight").addEventListener("click", () => {
+  const num     = $("f-num").value.trim();
+  const airline = $("f-airline").value.trim() || "?";
+  const type    = $("f-type").value.trim() || "A320";
+  const dir     = $("f-dir").value;
+  const fuel    = Number($("f-fuel").value);
+  const emg     = $("f-emergency").checked;
+  if (!num) { toast("Flight number is required.", "warn"); return; }
+  // Avoid duplicate flight numbers (the C++ scheduler accepts them but the
+  // emergency-promotion lookup keys on flight number, so duplicates are
+  // ambiguous - we surface that here so the user notices).
+  const all = sched.pending.raw().map(f => f.num);
+  for (const r of sched.runways) {
+    if (r.current) all.push(r.current.num);
+    all.push(...r.waiting.toArray().map(f => f.num));
+  }
+  if (all.includes(num)) {
+    toast(`Flight ${num} is already in the system.`, "warn"); return;
+  }
+  const f = new Flight(num, airline, type, dir, fuel, emg);
+  sched.registerFlight(f);
+  toast(`Registered ${num} (${airline}, fuel ${fuel}%${emg ? ", EMERGENCY" : ""})`, "ok");
+  $("f-num").value = defaultFlightNum();
+  $("f-emergency").checked = false;
+  render();
+});
+
+$("add-runway").addEventListener("click", () => {
+  const name = $("r-name").value.trim();
+  const svc  = Math.max(1, Number($("r-svc").value) | 0);
+  if (!name) { toast("Runway name is required.", "warn"); return; }
+  if (sched.runways.some(r => r.name === name)) {
+    toast(`Runway ${name} already exists.`, "warn"); return;
+  }
+  sched.addRunway(name, svc);
+  toast(`Added runway ${name} (service ${svc} min)`, "ok");
+  // Suggest a fresh default name for the next add.
+  $("r-name").value = "RW-" + (sched.runways.length + 1);
+  render();
+});
+
+$("declare-emergency").addEventListener("click", () => {
+  const num = $("e-num").value.trim();
+  if (!num) { toast("Flight number is required.", "warn"); return; }
+  if (sched.declareEmergency(num)) {
+    toast(`${num} promoted to EMERGENCY`, "ok");
+    $("e-num").value = "";
+    render();
+  } else {
+    toast(`No pending flight ${num} (already dispatched or unknown).`, "warn");
+  }
+});
+
+$("tick-btn").addEventListener("click", () => {
+  const m = Math.max(1, Number($("t-mins").value) | 0);
+  sched.tick(m);
+  render();
+});
+
+let runHandle = null;
+function stopAutoRun() {
+  if (runHandle !== null) { clearInterval(runHandle); runHandle = null; }
+  $("run-btn").style.display = "";
+  $("stop-btn").style.display = "none";
+}
+$("run-btn").addEventListener("click", () => {
+  if (runHandle !== null) return;
+  $("run-btn").style.display = "none";
+  $("stop-btn").style.display = "";
+  runHandle = setInterval(() => {
+    sched.tick(1);
+    render();
+    const done = sched.pending.empty() && sched.runways.every(r => !r.busy);
+    if (done) { stopAutoRun(); toast("Auto-run finished &mdash; airfield idle", "ok"); }
+  }, 600);
+});
+$("stop-btn").addEventListener("click", stopAutoRun);
+
+$("reset-btn").addEventListener("click", () => {
+  stopAutoRun();
+  // Reset by replacing the scheduler instance (cheap and clear).
+  const oldMode = sched.dispatchMode;
+  Object.assign(sched, new Scheduler());
+  sched.dispatchMode = oldMode;
+  sched.addRunway("RW-09L", 3);
+  sched.addRunway("RW-27R", 3);
+  globalOps.reset();
+  Object.keys(lastOpVals).forEach(k => delete lastOpVals[k]);
+  nextDefaultFlightNum = 100;
+  $("f-num").value = defaultFlightNum();
+  $("r-name").value = "RW-EXTRA";
+  $("e-num").value = "";
+  toast("Reset to default state.", "ok");
+  render();
+});
+
+$("demo-btn").addEventListener("click", () => {
+  // Big rush-hour scenario: 2 runways, 22 flights with a wide spread of
+  // priorities so the heap is interesting and the per-runway queues
+  // visibly pile up across many ticks.
+  //
+  // Priority recap (see Flight.priority):
+  //     P = waitingTime
+  //       + (LOW_FUEL_THRESHOLD - fuel) * 200   if fuel < 30
+  //       + 10000                              if emergency
+  //
+  // The flights below cover all three regimes: 2 emergencies,
+  // 6 low-fuel flights (fuel < 30), and 14 normal flights.
+  stopAutoRun();
+  const oldMode = sched.dispatchMode;
+  Object.assign(sched, new Scheduler());
+  sched.dispatchMode = oldMode;
+  sched.addRunway("RW-09L", 3);
+  sched.addRunway("RW-27R", 3);
+  globalOps.reset();
+  Object.keys(lastOpVals).forEach(k => delete lastOpVals[k]);
+
+  // num     airline      type   dir    fuel  emergency
+  const demo = [
+    // --- emergencies (P >= 10000) ---
+    ["MS999", "Egyptair",   "B777", "ARR", 80, true ],
+    ["AA007", "American",   "B777", "ARR", 45, true ],
+
+    // --- low fuel (P jumps by 200 per % under 30) ---
+    ["AF120", "AirFrance",  "A320", "ARR",  5, false],   // P ~ 5000
+    ["DL310", "Delta",      "A330", "ARR", 12, false],   // P ~ 3600
+    ["IB770", "Iberia",     "A321", "ARR", 18, false],   // P ~ 2400
+    ["TK615", "TurkishAir", "B737", "ARR", 22, false],   // P ~ 1600
+    ["KL880", "KLM",        "A330", "ARR", 26, false],   // P ~  800
+    ["JL003", "JAL",        "B787", "ARR", 28, false],   // P ~  400
+
+    // --- normal traffic (P = waitingTime only) ---
+    ["BA456", "BritAir",    "B737", "DEP", 90, false],
+    ["LH100", "Lufthansa",  "A350", "ARR", 75, false],
+    ["EK220", "Emirates",   "B777", "DEP", 65, false],
+    ["UA440", "United",     "B787", "ARR", 50, false],
+    ["QR501", "Qatar",      "A350", "DEP", 70, false],
+    ["SQ808", "Singapore",  "A380", "ARR", 85, false],
+    ["AC077", "AirCanada",  "B737", "DEP", 60, false],
+    ["VS003", "VirginAtl",  "A330", "DEP", 55, false],
+    ["NH011", "ANA",        "B787", "ARR", 78, false],
+    ["AY071", "Finnair",    "A350", "ARR", 62, false],
+    ["EY020", "Etihad",     "B777", "DEP", 88, false],
+    ["WY123", "OmanAir",    "A330", "ARR", 40, false],
+    ["SU205", "Aeroflot",   "A321", "DEP", 72, false],
+    ["CX844", "Cathay",     "A350", "ARR", 48, false],
+  ];
+  for (const r of demo) {
+    sched.registerFlight(new Flight(r[0], r[1], r[2], r[3], r[4], r[5]));
+  }
+  toast(`Demo loaded - ${demo.length} flights on 2 runways`, "ok");
+  render();
+});
+
+/* ---- Dispatch mode toggle ---- */
+document.querySelectorAll("#dispatch-toggle .seg").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#dispatch-toggle .seg")
+      .forEach(x => x.classList.toggle("active", x === b));
+    sched.dispatchMode = b.dataset.mode;
+    toast(`Dispatch mode: ${b.dataset.mode === "drain" ? "Drain (multi)" : "Single per tick"}`, "ok");
+  });
+});
+
+/* ---- Benchmark wiring ---- */
+$("bench-run").addEventListener("click", runBenchmark);
+$("bench-clear").addEventListener("click", clearBenchmark);
+
+/* ====================================================================
+    Initial render
+    ==================================================================== */
+
+render();
+</script>
+</body>
+</html>
