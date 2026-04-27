@@ -1362,14 +1362,6 @@
       </div>
     </div>
 
-    <div class="group">
-      <span class="label" title="Drain dispatches every pending flight per tick (queues fill).&#10;Single dispatches one per tick (matches CLI exactly).">Dispatch Mode</span>
-      <div class="row segmented" id="dispatch-toggle">
-        <button class="seg active" data-mode="drain">Drain</button>
-        <button class="seg"        data-mode="single">Single</button>
-      </div>
-    </div>
-
   </div>
 
   <!-- ============================================================
@@ -1797,13 +1789,6 @@ class Scheduler {
     this.runways      = [];
     this.log          = [];
     this.currentTime  = 0;
-    /* dispatchMode:
-        "single" - one dispatch per tick (matches the C++ CLI exactly).
-        "drain"  - dispatch every pending flight each tick, distributed
-                   to the least-loaded runway. The waiting queues fill
-                   up immediately, so all runways become busy in a
-                   single tick once you have >= 1 flight per runway. */
-    this.dispatchMode = "drain";
     /* History (used by the throughput sparkline + complexity tab). */
     this.history      = []; // { t, pending, busy, completed }
   }
@@ -1834,11 +1819,6 @@ class Scheduler {
     }
     return bestIdx;
   }
-  _dispatchOne() {
-    const next = this.pending.pop();
-    const idx  = this.pickRunway();
-    this.runways[idx].clearFlight(next);
-  }
   tick(minutes = 1) {
     if (minutes <= 0) return;
     for (let m = 0; m < minutes; m++) {
@@ -1846,13 +1826,12 @@ class Scheduler {
       const arr = this.pending.raw();
       for (let i = 0; i < arr.length; i++) arr[i].incWait(1);
 
-      // 2. Dispatch from heap to least-loaded runway(s)
-      if (this.runways.length > 0) {
-        if (this.dispatchMode === "drain") {
-          while (!this.pending.empty()) this._dispatchOne();
-        } else if (!this.pending.empty()) {
-          this._dispatchOne();
-        }
+      // 2. At most one dispatch from heap to least-loaded runway
+      //    (matches the C++ CLI behaviour exactly).
+      if (!this.pending.empty() && this.runways.length > 0) {
+        const next = this.pending.pop();
+        const idx  = this.pickRunway();
+        this.runways[idx].clearFlight(next);
       }
 
       // 3. Each runway advances by 1 min
@@ -2812,9 +2791,7 @@ $("stop-btn").addEventListener("click", stopAutoRun);
 $("reset-btn").addEventListener("click", () => {
   stopAutoRun();
   // Reset by replacing the scheduler instance (cheap and clear).
-  const oldMode = sched.dispatchMode;
   Object.assign(sched, new Scheduler());
-  sched.dispatchMode = oldMode;
   sched.addRunway("RW-09L", 3);
   sched.addRunway("RW-27R", 3);
   globalOps.reset();
@@ -2840,9 +2817,7 @@ $("demo-btn").addEventListener("click", () => {
   // The flights below cover all three regimes: 2 emergencies,
   // 6 low-fuel flights (fuel < 30), and 14 normal flights.
   stopAutoRun();
-  const oldMode = sched.dispatchMode;
   Object.assign(sched, new Scheduler());
-  sched.dispatchMode = oldMode;
   sched.addRunway("RW-09L", 3);
   sched.addRunway("RW-27R", 3);
   globalOps.reset();
@@ -2883,16 +2858,6 @@ $("demo-btn").addEventListener("click", () => {
   }
   toast(`Demo loaded - ${demo.length} flights on 2 runways`, "ok");
   render();
-});
-
-/* ---- Dispatch mode toggle ---- */
-document.querySelectorAll("#dispatch-toggle .seg").forEach(b => {
-  b.addEventListener("click", () => {
-    document.querySelectorAll("#dispatch-toggle .seg")
-      .forEach(x => x.classList.toggle("active", x === b));
-    sched.dispatchMode = b.dataset.mode;
-    toast(`Dispatch mode: ${b.dataset.mode === "drain" ? "Drain (multi)" : "Single per tick"}`, "ok");
-  });
 });
 
 /* ---- Benchmark wiring ---- */

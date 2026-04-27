@@ -164,11 +164,10 @@ double-click) and you get two tabs:
   with a pulsing "now serving" cell at the head,
 * throughput sparklines for pending / active / completed,
 * the global flight log scrolling in the corner,
-* a live tick clock and a Dispatch Mode toggle:
-  - `Drain` (default) – every tick dispatches *all* pending flights to
-    the least-loaded runway, so queues actually fill and both runways
-    run in parallel from tick 1.
-  - `Single` – one dispatch per tick, matching the C++ CLI exactly.
+* a live tick clock that advances when you press Tick or Auto-Run.
+
+The scheduler dispatches one flight per tick to the least-loaded
+runway, exactly matching the C++ CLI behaviour.
 
 **Complexity & Performance tab**
 * live operation counters for `MaxHeap.push/pop/compare/rebuild` and
