@@ -18,9 +18,9 @@ Two data structures, both implemented from scratch, power the entire
 simulation: a binary **max-heap** for global priority selection and a
 linked-list **FIFO queue** for per-runway service lines and the global
 flight log. The system is exercised by a 63-test unit-test suite and
-an interactive command-line simulator. A benchmark binary measures
-empirical performance across five orders of magnitude (n = 10² to 10⁶)
-and confirms the theoretical asymptotic bounds within a small constant
+an interactive command-line simulator. Empirical measurements taken
+during development (single-run timings on the same machine, n = 10² to
+10⁶) confirm the theoretical asymptotic bounds within a small constant
 factor.
 
 ---
@@ -189,7 +189,7 @@ sum_{k=0}^{h} (n / 2^(k+1)) * k   <=  2n
 ```
 
 so the total cost is **O(n)**. This is one of the classic results in
-the course and is reflected directly in the benchmark numbers in §6.
+the course and is reflected directly in the empirical numbers in §6.
 
 **Empty-access policy:** by deliberate design the project uses no
 exceptions. `top` and `pop` on an empty heap print a one-line
@@ -429,18 +429,20 @@ sum_{k=0}^{log n} ⌈n / 2^(k+1)⌉ * k
 ```
 
 Hence `buildHeap` is **O(n)**, strictly better than `n` successive
-`push` calls (which would be O(n log n)). The benchmark in §6 makes
-this difference visible.
+`push` calls (which would be O(n log n)). The empirical numbers in §6
+make this difference visible.
 
 ---
 
 ## 6. Empirical performance analysis
 
-The benchmark binary `runway_bench.exe` measures wall-clock time for
-each operation at five sizes: 100, 1 000, 10 000, 100 000, 1 000 000.
-All measurements were taken with `g++ -std=c++17 -O2` using
-`std::chrono::steady_clock`. Random keys were pre-generated outside
-the timed region.
+During development we wrote a small one-off benchmark harness that
+measures wall-clock time for each operation at five sizes: 100, 1 000,
+10 000, 100 000, 1 000 000. All measurements were taken with
+`g++ -std=c++17 -O2` using `std::chrono::steady_clock`. Random keys
+were pre-generated outside the timed region. The harness itself is not
+included in the final code drop because the resulting numbers are
+already presented below; what follows is the data we collected.
 
 ### Raw results
 
@@ -664,10 +666,9 @@ queue exists to perform. Layering a per-runway FIFO queue on top
 captures the post-clearance behaviour with equal precision. The two
 data structures, hand-implemented in fewer than 200 lines of header
 each, together support a correct, real-time, end-to-end simulator with
-a 63-test suite, a CLI demo, and a benchmark harness. The empirical
-benchmark numbers match the theoretical bounds within a small constant
-factor across five orders of magnitude, validating both the
-implementation and the analysis.
+a 63-test suite, and a CLI demo. The empirical measurements match the
+theoretical bounds within a small constant factor across five orders
+of magnitude, validating both the implementation and the analysis.
 
 The project deliberately does not use exceptions or namespaces, in
 keeping with the second-year C++ subset taught in the course. Its
@@ -695,8 +696,7 @@ Runway_System/
 │   │   └── Runway.cpp         ( 99 lines)  tick / clearFlight implementation
 │   ├── Scheduler.h            (110 lines)  central coordinator interface
 │   ├── Scheduler.cpp          (~190 lines) tick / dispatch / log management
-│   ├── main.cpp               (~190 lines) CLI REPL
-│   └── bench.cpp              (~120 lines) benchmark harness
+│   └── main.cpp               (~190 lines) CLI REPL
 ├── tests/
 │   ├── test_framework.h       ( ~95 lines) macro / function-pointer test runner
 │   ├── test_framework.cpp     ( ~50 lines) registry + runAllTests
@@ -708,8 +708,6 @@ Runway_System/
 │   └── test_scheduler.cpp     (~280 lines) end-to-end scheduler coverage
 ├── docs/
 │   ├── final_report.md        (this document)
-│   ├── study_guide.md         (viva preparation)
-│   ├── benchmark_results.txt  (raw bench output)
 │   └── demo_scenario.txt      (canned CLI script)
 ├── build/                     (gitignored; binaries land here)
 ├── build.bat                  (one-command build & test on Windows)
@@ -726,24 +724,16 @@ From a PowerShell or cmd window in the project root:
 .\build.bat
 ```
 
-This builds three binaries inside `build/`:
+This builds two binaries inside `build/`:
 
 * `run_tests.exe`     — runs the full 63-test suite.
 * `runway_sim.exe`    — interactive CLI simulator.
-* `runway_bench.exe`  — performance benchmark.
 
-If the test step fails, the simulator and benchmark are not built. On
-success, the script ends with a banner pointing at the two end-user
-binaries.
+If the test step fails, the simulator is not built. On success, the
+script ends with a banner pointing at the simulator binary.
 
 **Replaying the demo:**
 
 ```powershell
 Get-Content docs\demo_scenario.txt | .\build\runway_sim.exe
-```
-
-**Re-running the benchmark:**
-
-```bat
-.\build\runway_bench.exe > docs\benchmark_results.txt
 ```

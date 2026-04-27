@@ -8,7 +8,6 @@ set CXXFLAGS=-std=c++17 -Wall -Wextra -Wpedantic -O2 -Isrc -Itests
 
 set TEST_OUT=build\run_tests.exe
 set SIM_OUT=build\runway_sim.exe
-set BENCH_OUT=build\runway_bench.exe
 
 if not exist build mkdir build
 
@@ -60,24 +59,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM ---------------------------------------------------------------
-REM 3. Benchmark binary
-REM ---------------------------------------------------------------
-%CXX% %CXXFLAGS% ^
-    src\bench.cpp ^
-    -o %BENCH_OUT%
-
-if errorlevel 1 (
-    echo.
-    echo Benchmark build FAILED.
-    exit /b 1
-)
-
 echo.
 echo ============================================
 echo  Simulator built: %SIM_OUT%
-echo  Benchmark built: %BENCH_OUT%
-echo.
-echo  Run simulator: %SIM_OUT%
-echo  Run benchmark: %BENCH_OUT%
+echo  Run with:  %SIM_OUT%
 echo ============================================

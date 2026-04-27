@@ -18,17 +18,14 @@ priority dispatch, load-balanced runway selection, ageing of pending
 flights, mid-flight emergency promotion, end-to-end flow into the log,
 and the CLI's view helpers (pending list, log list).
 
-**Three binaries** are produced by `build.bat`:
+**Two binaries** are produced by `build.bat`:
 
 * `build\run_tests.exe`     — full test suite.
 * `build\runway_sim.exe`    — interactive CLI simulator.
-* `build\runway_bench.exe`  — performance benchmark across n = 10² … 10⁶.
 
 **Documentation** lives in `docs/`:
 
 * `final_report.md`         — the comprehensive project write-up.
-* `study_guide.md`          — viva preparation, every "things to do" task with worked answers.
-* `benchmark_results.txt`   — raw benchmark output.
 * `demo_scenario.txt`       — canned 13-line script for the demo video.
 
 ## Data Structures (implemented from scratch)
@@ -52,8 +49,8 @@ project needs (ints in tests, `Flight` objects in the application).
 | space            | O(n)         | O(n)       |
 
 One full simulator tick costs **O(n + R)** — linear in the pending heap
-size plus the number of runways. Detailed analysis with proofs will
-live in `docs/complexity_analysis.md` alongside the report.
+size plus the number of runways. Full proofs and the empirical numbers
+behind these bounds live in `docs/final_report.md`.
 
 ## Project layout
 
@@ -77,7 +74,7 @@ Runway_System/
 │   ├── test_runway.cpp         <- runway state machine coverage
 │   └── test_scheduler.cpp      <- end-to-end scheduling coverage
 ├── docs/
-│   ├── study_guide.md          <- viva preparation, things-to-do answers
+│   ├── final_report.md         <- full project write-up (the deliverable)
 │   └── demo_scenario.txt       <- canned demo input piped into the simulator
 ├── build/                      <- compiled artefacts (gitignored)
 ├── build.bat                   <- one-command build & test on Windows
@@ -148,13 +145,6 @@ immediately without any setup.
 3. ✅ `Runway` class composing one `Queue<Flight>`.
 4. ✅ `Scheduler` composing one `MaxHeap<Flight>` over all pending flights.
 5. ✅ CLI REPL: tick-based simulation, command prompt, log viewer.
-6. ✅ Performance benchmarks (insert/extract at sizes 10² … 10⁶).
+6. ✅ Performance analysis (theoretical + empirical, in the final report).
 7. ✅ Final report (`docs/final_report.md`).
 8. ⬜ Demo video (record yourself running `docs/demo_scenario.txt`).
-
-## Study guide
-
-Before the project discussion, work through `docs/study_guide.md`. It
-collects every "things to do" task we've used while building the system,
-each with a worked-out answer, plus a battery of likely viva questions
-and a one-paragraph project summary you can memorise.
