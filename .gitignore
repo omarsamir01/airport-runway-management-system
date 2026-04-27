@@ -20,3 +20,7 @@ Thumbs.db
 # Cursor / agent metadata
 .cursor/
 .specstory/
+
+# Scratch / temporary files
+.commit_msg.tmp
+*.tmp
