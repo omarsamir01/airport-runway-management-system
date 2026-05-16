@@ -5,6 +5,13 @@ across multiple runways. The system ranks flights by urgency (emergencies,
 fuel level, accumulated delay), holds cleared aircraft in per-runway FIFO
 queues, and logs every operation.
 
+**Repository:** [github.com/omarsamir01/airport-runway-management-system](https://github.com/omarsamir01/airport-runway-management-system)
+
+```bash
+git clone https://github.com/omarsamir01/airport-runway-management-system.git
+cd airport-runway-management-system
+```
+
 ## Status
 
 The project is feature-complete: heap, queue, flight, runway, scheduler,
