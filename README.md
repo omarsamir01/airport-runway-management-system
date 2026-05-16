@@ -32,8 +32,9 @@ and the CLI's view helpers (pending list, log list).
 
 **Documentation** lives in `docs/`:
 
-* `final_report.md`         — the comprehensive project write-up.
-* `demo_scenario.txt`       — canned 13-line script for the demo video.
+* `final_report.md`                      — the comprehensive project write-up.
+* `Airport_Runway_Management_Report.pdf` — formatted submission-style report (PDF).
+* `demo_scenario.txt`                    — canned 13-line script for the demo video.
 
 **Web visualizer** lives only in `web/` (there is no separate `UI/` copy):
 
@@ -94,8 +95,9 @@ Runway_System/
 │   ├── test_runway.cpp         <- runway state machine coverage
 │   └── test_scheduler.cpp      <- end-to-end scheduling coverage
 ├── docs/
-│   ├── final_report.md         <- full project write-up (the deliverable)
-│   └── demo_scenario.txt       <- canned demo input piped into the simulator
+│   ├── final_report.md                 <- full project write-up (the deliverable)
+│   ├── Airport_Runway_Management_Report.pdf  <- PDF report
+│   └── demo_scenario.txt               <- canned demo input piped into the simulator
 ├── web/
 │   └── index.html              <- visualizer (open in any browser, no build)
 ├── build/                      <- compiled artefacts (gitignored)
