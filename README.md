@@ -35,14 +35,18 @@ and the CLI's view helpers (pending list, log list).
 * `final_report.md`         — the comprehensive project write-up.
 * `demo_scenario.txt`       — canned 13-line script for the demo video.
 
-**Web visualizer** lives in `web/`:
+**Web visualizer** lives only in `web/` (there is no separate `UI/` copy):
 
 * `index.html`              — single-file, no-build UI that mirrors the C++ algorithm
                               in JavaScript and renders the priority heap as a live
                               binary tree, the per-runway queues as horizontal cells,
                               the runways as airplane cards with progress bars, and
                               the global flight log as a scrolling feed.
-                              Open it by double-clicking the file.
+                              Open it locally by double-clicking, or use the live link below.
+
+**Live demo (GitHub Pages):** [https://omarsamir01.github.io/airport-runway-management-system/](https://omarsamir01.github.io/airport-runway-management-system/)
+
+After the first push with `.github/workflows/deploy-pages.yml`, open the repo **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions** if the site does not appear immediately.
 
 ## Data Structures (implemented from scratch)
 
@@ -158,9 +162,12 @@ immediately without any setup.
 
 ## Web visualizer
 
+**Hosted:** [GitHub Pages](https://omarsamir01.github.io/airport-runway-management-system/) (deploys from the `web/` folder via GitHub Actions).
+
+**Local:** open `web/index.html` in any browser (double-click).
+
 `web/index.html` is a single-file, dependency-free web UI that visualizes
-the same algorithm in real time. Open it in any browser (just
-double-click) and you get two tabs:
+the same algorithm in real time. You get two tabs:
 
 **Live Simulation tab**
 * the runways shown as top-down asphalt strips with sliding airplane
