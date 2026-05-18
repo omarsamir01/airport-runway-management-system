@@ -34,6 +34,7 @@ and the CLI's view helpers (pending list, log list).
 
 * `final_report.md`                      — the comprehensive project write-up.
 * `Airport_Runway_Management_Report.pdf` — formatted submission-style report (PDF).
+* `Time_Complexity_Analysis.pdf`          — how every asymptotic bound is derived (PDF; regenerate via `python docs/generate_complexity_pdf.py`).
 * `demo_scenario.txt`                    — canned 13-line script for the demo video.
 
 **Web visualizer** lives only in `web/` (there is no separate `UI/` copy):
@@ -45,7 +46,7 @@ and the CLI's view helpers (pending list, log list).
                               the global flight log as a scrolling feed.
                               Open it locally by double-clicking, or use the live link below.
 
-**Live demo (GitHub Pages):** [https://omarsamir01.github.io/airport-runway-management-system/](https://omarsamir01.github.io/airport-runway-management-system/)
+**Live demo (GitHub Pages):** [site root](https://omarsamir01.github.io/airport-runway-management-system/) · [/web/ mirror](https://omarsamir01.github.io/airport-runway-management-system/web/) (same app; both URLs work after deploy)
 
 After the first push with `.github/workflows/deploy-pages.yml`, open the repo **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions** if the site does not appear immediately.
 
@@ -97,6 +98,7 @@ Runway_System/
 ├── docs/
 │   ├── final_report.md                 <- full project write-up (the deliverable)
 │   ├── Airport_Runway_Management_Report.pdf  <- PDF report
+│   ├── Time_Complexity_Analysis.pdf          <- complexity derivation note (PDF)
 │   └── demo_scenario.txt               <- canned demo input piped into the simulator
 ├── web/
 │   └── index.html              <- visualizer (open in any browser, no build)
@@ -164,7 +166,7 @@ immediately without any setup.
 
 ## Web visualizer
 
-**Hosted:** [GitHub Pages](https://omarsamir01.github.io/airport-runway-management-system/) (deploys from the `web/` folder via GitHub Actions).
+**Hosted:** [GitHub Pages — root](https://omarsamir01.github.io/airport-runway-management-system/) · [/web/](https://omarsamir01.github.io/airport-runway-management-system/web/) (deploy bundles `web/index.html` to both paths via Actions).
 
 **Local:** open `web/index.html` in any browser (double-click).
 

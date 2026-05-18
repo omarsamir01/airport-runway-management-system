@@ -28,9 +28,18 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
+      # Single-file app lives in web/index.html. Uploading `path: web` puts it at
+      # site root only, so .../repo/web/ 404s. Duplicate into _site/web/ so both
+      # https://user.github.io/repo/ and .../repo/web/ work.
+      - name: Prepare site (root + web/)
+        run: |
+          mkdir -p _site/web
+          cp web/index.html _site/index.html
+          cp web/index.html _site/web/index.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web
+          path: _site
 
       - id: deployment
         uses: actions/deploy-pages@v4
