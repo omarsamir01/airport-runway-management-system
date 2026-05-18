@@ -1607,6 +1607,9 @@
           <label class="check-pill"><input type="checkbox" data-size="500000"> 500 000</label>
           <label class="check-pill"><input type="checkbox" data-size="1000000"> 1 000 000</label>
           <label class="check-pill"><input type="checkbox" data-size="2000000"> 2 000 000</label>
+          <label class="check-pill"><input type="checkbox" data-size="3000000"> 3 000 000</label>
+          <label class="check-pill"><input type="checkbox" data-size="5000000"> 5 000 000</label>
+          <label class="check-pill"><input type="checkbox" data-size="10000000"> 10 000 000</label>
           <button id="bench-run">Run benchmark</button>
           <button id="bench-clear" class="ghost">Clear</button>
         </div>
@@ -1620,7 +1623,8 @@
           <code>performance.now()</code>. Y-axis uses a logarithmic scale so
           the O(1) and O(log n) curves are both readable.
           Large sizes (500k+) allocate many objects and may take tens of seconds;
-          they stay off by default so you can opt in when testing on a capable machine.
+          multi-million runs need plenty of free RAM and can stall the tab during timed loops.
+          They stay off by default so you can opt in when testing on a capable machine.
         </div>
       </div>
     </div>
@@ -2599,7 +2603,10 @@ async function runBenchmark() {
        region, just like the C++ benchmark we did with bench.cpp.
        Chunk + yield so multi-million sizes keep the tab responsive. */
     const flights = new Array(n);
-    const CHUNK = n >= 500000 ? 25000 : (n >= 100000 ? 50000 : n);
+    const CHUNK = n >= 2000000 ? 10000
+                : n >= 500000 ? 25000
+                : n >= 100000 ? 50000
+                : n;
     for (let start = 0; start < n; start += CHUNK) {
       const end = Math.min(start + CHUNK, n);
       for (let i = start; i < end; i++) {
